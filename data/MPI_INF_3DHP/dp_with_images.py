@@ -113,9 +113,11 @@ class Dataset(torch.utils.data.Dataset):
                 print(f"Error loading sample {idx + attempt}: {e}")
                 continue
         
-        # If all attempts fail, return None - this will be handled by the collate_fn
-        print(f"Warning: Could not load valid sample after {max_attempts} attempts for index {idx}")
-        return None
+        # If all attempts fail, create a dummy sample to avoid crashing
+        print(f"Warning: Could not load valid sample after {max_attempts} attempts, creating dummy sample")
+        dummy_img = np.zeros((self.input_res, self.input_res, 3), dtype=np.float32)
+        dummy_heatmaps = np.zeros((17, self.output_res, self.output_res), dtype=np.float32)
+        return dummy_img, dummy_heatmaps
 
     def loadImage(self, data_tuple):
         sequence_key, frame_idx = data_tuple
@@ -335,17 +337,6 @@ def init(config):
     
     dataset = {'train': train_dataset, 'valid': valid_dataset}
     
-    # Custom collate function to handle None values (skipped samples)
-    def collate_fn(batch):
-        # Filter out None values
-        batch = [item for item in batch if item is not None]
-        if len(batch) == 0:
-            return None
-        
-        # Default collate for valid samples
-        import torch
-        return torch.utils.data.dataloader.default_collate(batch)
-    
     loaders = {}
     for key in dataset:
         shuffle = (key == 'train')
@@ -353,9 +344,8 @@ def init(config):
             dataset[key], 
             batch_size=batchsize, 
             shuffle=shuffle, 
-            num_workers=config['train']['num_workers'], 
+            num_workers=0,  # Disable multiprocessing to avoid pickle issues
             pin_memory=False,
-            collate_fn=collate_fn,
             drop_last=True  # Drop incomplete batches
         )
 
@@ -364,24 +354,22 @@ def init(config):
         batchnum = config['train']['{}_iters'.format(phase)]
         loader = loaders[phase].__iter__()
         
-        batch_count = 0
-        
-        while True:  # Infinite generator
+        for i in range(batchnum):
             try:
                 batch = next(loader)
-                if batch is not None:  # Valid batch with real images
-                    imgs, heatmaps = batch
-                    yield {
-                        'imgs': imgs,
-                        'heatmaps': heatmaps,
-                    }
-                    batch_count += 1
-                else:
-                    print(f"Skipped batch due to missing images")
+                imgs, heatmaps = batch
+                yield {
+                    'imgs': imgs,
+                    'heatmaps': heatmaps,
+                }
             except StopIteration:
                 # Restart loader if we reach the end
-                print(f"Restarting data loader after {batch_count} batches")
                 loader = loaders[phase].__iter__()
-                batch_count = 0
+                batch = next(loader)
+                imgs, heatmaps = batch
+                yield {
+                    'imgs': imgs,
+                    'heatmaps': heatmaps,
+                }
 
     return lambda key: gen(key)
