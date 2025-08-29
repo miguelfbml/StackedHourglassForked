@@ -7,6 +7,7 @@
 
 echo "Running job in reserved partition"
 
+
 # Run training with real images
 python train_mpi_inf_3dhp_with_images.py \
     --exp pose_mpi_inf_3dhp_images \

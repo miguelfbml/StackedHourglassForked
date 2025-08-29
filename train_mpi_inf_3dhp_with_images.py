@@ -106,7 +106,7 @@ def init():
     make_network builds a function which can do forward and backward propagation
     """
     opt = parse_command_line()
-    task = importlib.import_module('task.pose_mpi_inf_3dhp')
+    task = importlib.import_module('task.pose_mpi_inf_3dhp_with_images')
     exp_path = os.path.join('exp', opt.exp)
     
     current_time = datetime.now().strftime('%b%d_%H-%M-%S')
