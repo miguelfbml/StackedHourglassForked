@@ -109,11 +109,13 @@ class Dataset(torch.utils.data.Dataset):
                 result = self.loadImage(self.frame_index[(idx + attempt) % len(self.frame_index)])
                 if result is not None:
                     return result
-            except:
+            except Exception as e:
+                print(f"Error loading sample {idx + attempt}: {e}")
                 continue
         
-        # If all attempts fail, return None - this will be handled by the data loader
-        raise StopIteration("Could not load valid sample after multiple attempts")
+        # If all attempts fail, return None - this will be handled by the collate_fn
+        print(f"Warning: Could not load valid sample after {max_attempts} attempts for index {idx}")
+        return None
 
     def loadImage(self, data_tuple):
         sequence_key, frame_idx = data_tuple
@@ -362,11 +364,9 @@ def init(config):
         batchnum = config['train']['{}_iters'.format(phase)]
         loader = loaders[phase].__iter__()
         
-        successful_batches = 0
-        attempts = 0
-        max_attempts = batchnum * 3  # Allow more attempts to find valid batches
+        batch_count = 0
         
-        while successful_batches < batchnum and attempts < max_attempts:
+        while True:  # Infinite generator
             try:
                 batch = next(loader)
                 if batch is not None:  # Valid batch with real images
@@ -375,16 +375,13 @@ def init(config):
                         'imgs': imgs,
                         'heatmaps': heatmaps,
                     }
-                    successful_batches += 1
+                    batch_count += 1
                 else:
                     print(f"Skipped batch due to missing images")
-                attempts += 1
             except StopIteration:
                 # Restart loader if we reach the end
+                print(f"Restarting data loader after {batch_count} batches")
                 loader = loaders[phase].__iter__()
-                attempts += 1
-        
-        if successful_batches < batchnum:
-            print(f"Warning: Only found {successful_batches}/{batchnum} valid batches for {phase}")
+                batch_count = 0
 
     return lambda key: gen(key)
