@@ -7,6 +7,10 @@
 
 echo "Running job in reserved partition"
 
+# Environment variables to fix multiprocessing issues
+export CUDA_VISIBLE_DEVICES=0
+export PYTHONPATH="${PYTHONPATH}:$(pwd)"
+export CUDA_LAUNCH_BLOCKING=0
 
 # Run training with real images
 python train_mpi_inf_3dhp_with_images.py \

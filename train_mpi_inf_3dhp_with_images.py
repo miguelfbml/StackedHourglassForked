@@ -2,6 +2,13 @@ import os
 import tqdm
 from os.path import dirname
 import argparse
+import multiprocessing
+
+# Fix for multiprocessing issues on SLURM/cluster environments
+try:
+    multiprocessing.set_start_method('spawn', force=True)
+except:
+    pass
 
 import torch.backends.cudnn as cudnn
 cudnn.benchmark = True

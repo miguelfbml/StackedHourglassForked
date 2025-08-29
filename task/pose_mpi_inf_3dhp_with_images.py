@@ -36,7 +36,7 @@ __config__ = {
         ],
         'decay_iters': 100000,
         'decay_lr': 2e-4,
-        'num_workers': 4,  # Increased for image loading
+        'num_workers': 0,  # Set to 0 to avoid multiprocessing issues on SLURM
         'use_data_loader': True,
     },
 }
