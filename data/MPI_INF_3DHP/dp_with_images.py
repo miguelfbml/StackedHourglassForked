@@ -102,7 +102,18 @@ class Dataset(torch.utils.data.Dataset):
         return len(self.frame_index)
 
     def __getitem__(self, idx):
-        return self.loadImage(self.frame_index[idx % len(self.frame_index)])
+        # Try multiple times to get a valid sample with real image
+        max_attempts = 10
+        for attempt in range(max_attempts):
+            try:
+                result = self.loadImage(self.frame_index[(idx + attempt) % len(self.frame_index)])
+                if result is not None:
+                    return result
+            except:
+                continue
+        
+        # If all attempts fail, return None - this will be handled by the data loader
+        raise StopIteration("Could not load valid sample after multiple attempts")
 
     def loadImage(self, data_tuple):
         sequence_key, frame_idx = data_tuple
@@ -115,10 +126,9 @@ class Dataset(torch.utils.data.Dataset):
         img = self.load_image_frame(sequence_key, frame_idx)
         
         if img is None:
-            # Fallback to synthetic image if real image not found
-            print(f"Warning: Could not load image for {sequence_key} frame {frame_idx}, using synthetic image")
-            img = np.random.normal(0.5, 0.1, (self.input_res, self.input_res, 3)).astype(np.float32)
-            img = np.clip(img, 0, 1)
+            # Skip this sample instead of using synthetic image
+            print(f"Skipping sample: Could not load image for {sequence_key} frame {frame_idx}")
+            return None
         else:
             # Resize image to input resolution
             img = cv2.resize(img, (self.input_res, self.input_res))
@@ -323,6 +333,17 @@ def init(config):
     
     dataset = {'train': train_dataset, 'valid': valid_dataset}
     
+    # Custom collate function to handle None values (skipped samples)
+    def collate_fn(batch):
+        # Filter out None values
+        batch = [item for item in batch if item is not None]
+        if len(batch) == 0:
+            return None
+        
+        # Default collate for valid samples
+        import torch
+        return torch.utils.data.dataloader.default_collate(batch)
+    
     loaders = {}
     for key in dataset:
         shuffle = (key == 'train')
@@ -331,23 +352,39 @@ def init(config):
             batch_size=batchsize, 
             shuffle=shuffle, 
             num_workers=config['train']['num_workers'], 
-            pin_memory=False
+            pin_memory=False,
+            collate_fn=collate_fn,
+            drop_last=True  # Drop incomplete batches
         )
 
     def gen(phase):
         batchsize = config['train']['batchsize']
         batchnum = config['train']['{}_iters'.format(phase)]
         loader = loaders[phase].__iter__()
-        for i in range(batchnum):
+        
+        successful_batches = 0
+        attempts = 0
+        max_attempts = batchnum * 3  # Allow more attempts to find valid batches
+        
+        while successful_batches < batchnum and attempts < max_attempts:
             try:
-                imgs, heatmaps = next(loader)
+                batch = next(loader)
+                if batch is not None:  # Valid batch with real images
+                    imgs, heatmaps = batch
+                    yield {
+                        'imgs': imgs,
+                        'heatmaps': heatmaps,
+                    }
+                    successful_batches += 1
+                else:
+                    print(f"Skipped batch due to missing images")
+                attempts += 1
             except StopIteration:
-                # to avoid no data provided by dataloader
+                # Restart loader if we reach the end
                 loader = loaders[phase].__iter__()
-                imgs, heatmaps = next(loader)
-            yield {
-                'imgs': imgs, #cropped and augmented
-                'heatmaps': heatmaps, #based on keypoints. 0 if not in img for joint
-            }
+                attempts += 1
+        
+        if successful_batches < batchnum:
+            print(f"Warning: Only found {successful_batches}/{batchnum} valid batches for {phase}")
 
     return lambda key: gen(key)
