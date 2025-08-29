@@ -83,7 +83,7 @@ class Dataset(torch.utils.data.Dataset):
                 num_frames = self.poses_2d[key].shape[0]
                 valid_frame_indices = np.where(self.valid_frames[key])[0] if key in self.valid_frames else range(num_frames)
                 
-                for frame_idx in valid_frame_indices[::10]:  # Sample every 10th frame for validation
+                for frame_idx in valid_frame_indices[::5]:  # Sample every 5th frame for more validation data
                     self.frame_index.append((key, frame_idx))
                     
                 # Store sequence info for test image loading

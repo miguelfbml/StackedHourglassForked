@@ -27,8 +27,8 @@ __config__ = {
         'batchsize': 16,
         'input_res': 256,
         'output_res': 64,
-        'train_iters': 1000,
-        'valid_iters': 10,
+        'train_iters': 100,  # Reduced from 1000 to 100 for faster epochs
+        'valid_iters': 50,   # Increased from 10 to 50 for better validation
         'learning_rate': 1e-3,
         'max_num_people' : 1,
         'loss': [
@@ -36,7 +36,7 @@ __config__ = {
         ],
         'decay_iters': 100000,
         'decay_lr': 2e-4,
-        'num_workers': 2,
+        'num_workers': 0,    # Set to 0 to avoid multiprocessing issues
         'use_data_loader': True,
     },
 }
