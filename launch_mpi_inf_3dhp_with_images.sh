@@ -7,12 +7,6 @@
 
 echo "Running job in reserved partition"
 
-# Activate conda environment
-conda activate tcpformer_env
-
-# Set CUDA device
-export CUDA_VISIBLE_DEVICES=0
-
 # Run training with real images
 python train_mpi_inf_3dhp_with_images.py \
     --exp pose_mpi_inf_3dhp_images \
