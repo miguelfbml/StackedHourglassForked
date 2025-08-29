@@ -1,12 +1,9 @@
 #!/bin/bash
-#SBATCH --job-name=StackedTrain_MPI_Images
-#SBATCH --output=slurm_StackedTrain_MPI_Images.%j.out
-#SBATCH --error=slurm_StackedTrain_MPI_Images.%j.err
-#SBATCH --time=48:00:00
-#SBATCH --partition=reserved
-#SBATCH --mem=32G
-#SBATCH --cpus-per-task=8
-#SBATCH --gres=gpu:1
+#SBATCH --partition=gpu_min8gb     # Reserved partition
+#SBATCH --qos=gpu_min8gb           # QoS level. Must match the partition name. External users must add the suffix "_ext".
+#SBATCH --job-name=StackedTrain    # Job name
+#SBATCH --output=slurm_%x.%j.out   # File containing STDOUT output
+#SBATCH --error=slurm_%x.%j.err    # File containing STDERR output. If ommited, use STDOUT.
 
 echo "Running job in reserved partition"
 
