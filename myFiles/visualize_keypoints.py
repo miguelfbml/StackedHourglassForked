@@ -14,7 +14,7 @@ os.chdir(project_root)
 print(f"Changed working directory to: {os.getcwd()}")
 
 # Create output directory if it doesn't exist
-output_dir = os.path.join(project_root, "output")
+output_dir = os.path.join(project_root, "myFiles", "output")
 os.makedirs(output_dir, exist_ok=True)
 print(f"Output directory: {output_dir}")
 
@@ -37,13 +37,10 @@ def visualize_keypoints(image, keypoints, visibility=None, title=None, save_path
     
     # Ensure image is in correct format
     if img_draw.dtype != np.uint8:
-        print(f"Warning: Image has dtype {img_draw.dtype}, converting to uint8")
         if img_draw.max() <= 1.0:
             img_draw = (img_draw * 255).astype(np.uint8)
         else:
             img_draw = img_draw.astype(np.uint8)
-    
-    print(f"Image shape: {img_draw.shape}, dtype: {img_draw.dtype}, min: {img_draw.min()}, max: {img_draw.max()}")
     
     # Define colors for each keypoint (BGR format for OpenCV)
     colors = [
@@ -190,35 +187,11 @@ def visualize_dataset(dataset_type='train', num_samples=30, start_idx=0, save_im
                 
                 # Create output paths
                 base_filename = os.path.splitext(os.path.basename(img_name))[0]
-                orig_save_path = os.path.join(output_dir, f"{dataset_type}_{base_filename}_original.jpg") if save_images else None
-                crop_save_path = os.path.join(output_dir, f"{dataset_type}_{base_filename}_cropped.jpg") if save_images else None
+                orig_save_path = os.path.join(output_dir, f"{dataset_type}_{base_filename}.jpg") if save_images else None
                 
                 # Process original image with keypoints
-                orig_title = f"{dataset_type.capitalize()} {i} - Original"
+                orig_title = f"{dataset_type.capitalize()} {i}"
                 annotated_orig = visualize_keypoints(orig_img, keypoints, visibility, orig_title, orig_save_path)
-                
-                # Get the normalized crop (as used in training)
-                input_res = 256  # Assuming input resolution is 256x256
-                cropped_img = crop(orig_img, center, scale, (input_res, input_res))
-                
-                # Ensure cropped image is in correct format (uint8)
-                if cropped_img.dtype != np.uint8:
-                    if cropped_img.max() <= 1.0:
-                        # If values are in [0,1] range, scale to [0,255]
-                        cropped_img = (cropped_img * 255).astype(np.uint8)
-                    else:
-                        # If values are already in [0,255] range but wrong type
-                        cropped_img = cropped_img.astype(np.uint8)
-                
-                # Transform keypoints to cropped image space
-                cropped_keypoints = np.copy(keypoints)
-                for j in range(keypoints.shape[0]):
-                    if visibility[j] > 0:
-                        cropped_keypoints[j] = transform(keypoints[j], center, scale, (input_res, input_res))
-                
-                # Process cropped image with keypoints
-                crop_title = f"{dataset_type.capitalize()} {i} - Cropped"
-                annotated_crop = visualize_keypoints(cropped_img, cropped_keypoints, visibility, crop_title, crop_save_path)
                 
                 # Save keypoint information to a text file
                 if save_images:
