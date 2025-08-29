@@ -137,10 +137,6 @@ def visualize_dataset(dataset_type='train', num_samples=30, start_idx=0, save_im
         end_idx = min(start_idx + num_samples, total_samples)
         print(f"Processing {end_idx - start_idx} samples...")
         
-        # Create a figure to display the images in a grid
-        fig, axs = plt.subplots(5, 6, figsize=(20, 15)) if num_samples > 1 else plt.subplots(1, 2, figsize=(16, 8))
-        axs = axs.flatten() if num_samples > 1 else axs
-        
         # Keep track of how many images we've processed
         processed = 0
         
@@ -191,24 +187,6 @@ def visualize_dataset(dataset_type='train', num_samples=30, start_idx=0, save_im
                 crop_title = f"{dataset_type.capitalize()} {i} - Cropped"
                 annotated_crop = visualize_keypoints(cropped_img, cropped_keypoints, visibility, crop_title, crop_save_path)
                 
-                # Add to the plot if we're displaying multiple images
-                if num_samples > 1 and processed < len(axs):
-                    if processed % 2 == 0:
-                        axs[processed].imshow(annotated_orig)
-                        axs[processed].set_title(f"Original {i}")
-                        axs[processed].axis('off')
-                    else:
-                        axs[processed].imshow(annotated_crop)
-                        axs[processed].set_title(f"Cropped {i}")
-                        axs[processed].axis('off')
-                elif num_samples == 1:
-                    axs[0].imshow(annotated_orig)
-                    axs[0].set_title(orig_title)
-                    axs[0].axis('off')
-                    axs[1].imshow(annotated_crop)
-                    axs[1].set_title(crop_title)
-                    axs[1].axis('off')
-                
                 # Save keypoint information to a text file
                 if save_images:
                     info_path = os.path.join(output_dir, f"{dataset_type}_{base_filename}_keypoints.txt")
@@ -227,41 +205,24 @@ def visualize_dataset(dataset_type='train', num_samples=30, start_idx=0, save_im
             except Exception as e:
                 print(f"Error processing image {i}: {str(e)}")
         
-        # Remove any unused subplots
-        if num_samples > 1:
-            for j in range(processed, len(axs)):
-                axs[j].axis('off')
-        
-        # Save the grid figure if we're showing multiple images
-        if num_samples > 1 and save_images:
-            plt.tight_layout()
-            grid_path = os.path.join(output_dir, f"{dataset_type}_grid.jpg")
-            plt.savefig(grid_path)
-            print(f"Saved grid visualization to: {grid_path}")
-        
         print(f"Processed {processed} images successfully")
-        
-        # If we're not saving to files, show the plot
-        if not save_images or num_samples == 1:
-            plt.tight_layout()
-            plt.show()
 
 def main():
-    print("MPII Dataset Keypoint Visualization")
-    print("="*50)
+    print("Processing 30 training images with keypoint visualization...")
     
     # Check if directories exist
-    print(f"Checking directories:")
-    print(f"Image directory: {ds.img_dir} - {'Exists' if os.path.exists(ds.img_dir) else 'MISSING'}")
-    print(f"Annotation directory: {ds.annot_dir} - {'Exists' if os.path.exists(ds.annot_dir) else 'MISSING'}")
-    print(f"Output directory: {output_dir} - {'Created' if os.path.exists(output_dir) else 'FAILED'}")
+    if not os.path.exists(ds.img_dir):
+        print(f"Error: Image directory not found: {ds.img_dir}")
+        return
+    if not os.path.exists(ds.annot_dir):
+        print(f"Error: Annotation directory not found: {ds.annot_dir}")
+        return
     
-    # Number of samples to process
-    num_samples = 30  # Change this number if you want more or fewer samples
+    print(f"Output directory: {output_dir}")
     
-    print(f"\nAutomatically processing {num_samples} training samples and saving to output folder...")
-    visualize_dataset('train', num_samples, start_idx=0, save_images=True)
-    print("\nProcessing complete!")
+    # Process 30 training samples
+    visualize_dataset('train', num_samples=30, start_idx=0, save_images=True)
+    print("Processing complete!")
 
 if __name__ == "__main__":
     main()
