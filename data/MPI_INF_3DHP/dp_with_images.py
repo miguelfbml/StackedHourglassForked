@@ -142,8 +142,8 @@ class Dataset(torch.utils.data.Dataset):
         # Generate heatmaps
         heatmaps = self.generateHeatmap(keypoints)
         
-        # Convert image to proper format (H, W, C) -> (C, H, W)
-        img = img.transpose(2, 0, 1)
+        # Keep image in (H, W, C) format - the model will handle the permutation
+        # img = img.transpose(2, 0, 1)  # Don't transpose here
         
         return img.astype(np.float32), heatmaps.astype(np.float32)
 
