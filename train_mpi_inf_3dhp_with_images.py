@@ -1,6 +1,7 @@
 import os
 import tqdm
 from os.path import dirname
+import argparse
 
 import torch.backends.cudnn as cudnn
 cudnn.benchmark = True
@@ -8,7 +9,6 @@ cudnn.enabled = True
 
 import torch
 import importlib
-import argparse
 from datetime import datetime
 from pytz import timezone
 
@@ -17,9 +17,11 @@ import shutil
 def parse_command_line():
     parser = argparse.ArgumentParser()
     parser.add_argument('-c', '--continue_exp', type=str, help='continue exp')
-    parser.add_argument('-e', '--exp', type=str, default='pose_mpi_inf_3dhp', help='experiments name')
+    parser.add_argument('-e', '--exp', type=str, default='pose_mpi_inf_3dhp_images', help='experiments name')
     parser.add_argument('-m', '--max_iters', type=int, default=250, help='max number of iterations (thousands)')
-    parser.add_argument('--data_root', type=str, default='data/motion3d', help='path to motion3d directory')
+    parser.add_argument('--data_root', type=str, default='data/motion3d', help='Path to MPI-INF-3DHP data')
+    parser.add_argument('--mpi_dataset_root', type=str, default='/nas-ctm01/datasets/public/mpi_inf_3dhp', 
+                       help='Path to MPI-INF-3DHP images')
     args = parser.parse_args()
     return args
 
@@ -63,7 +65,7 @@ def save_checkpoint(state, is_best, filename='checkpoint.pt'):
 
 def save(config):
     resume = os.path.join('exp', config['opt'].exp)
-    if config['opt'].exp=='pose_mpi_inf_3dhp' and config['opt'].continue_exp is not None:
+    if config['opt'].exp=='pose_mpi_inf_3dhp_images' and config['opt'].continue_exp is not None:
         resume = os.path.join('exp', config['opt'].continue_exp)
     resume_file = os.path.join(resume, 'checkpoint.pt')
 
@@ -110,13 +112,12 @@ def init():
     current_time = datetime.now().strftime('%b%d_%H-%M-%S')
 
     config = task.__config__
-    # Set the data root from command line argument
-    config['data_root'] = opt.data_root
-    
     try: os.makedirs(exp_path)
     except FileExistsError: pass
 
     config['opt'] = opt
+    config['data_root'] = opt.data_root
+    config['mpi_dataset_root'] = opt.mpi_dataset_root
     config['data_provider'] = importlib.import_module(config['data_provider'])
 
     func = task.make_network(config)
