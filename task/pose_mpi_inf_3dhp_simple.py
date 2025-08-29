@@ -10,7 +10,7 @@ from torch.nn import DataParallel
 from utils.misc import make_input, make_output, importNet
 
 __config__ = {
-    'data_provider': 'data.MPI_INF_3DHP.dp_with_images',
+    'data_provider': 'data.MPI_INF_3DHP.dp_simple',
     'network': 'models.posenet.PoseNet',
     'inference': {
         'nstack': 8,
@@ -24,10 +24,10 @@ __config__ = {
     },
 
     'train': {
-        'batchsize': 8,  # Reduced batch size since we're loading real images
+        'batchsize': 16,  # Increased since we use simple synthetic images
         'input_res': 256,
         'output_res': 64,
-        'train_iters': 500,  # Reduced since we have more data per iteration
+        'train_iters': 500,
         'valid_iters': 20,
         'learning_rate': 1e-3,
         'max_num_people' : 1,
@@ -36,7 +36,7 @@ __config__ = {
         ],
         'decay_iters': 100000,
         'decay_lr': 2e-4,
-        'num_workers': 0,  # Set to 0 to avoid multiprocessing issues on SLURM
+        'num_workers': 0,  # No multiprocessing
         'use_data_loader': True,
     },
 }
@@ -88,7 +88,7 @@ def make_network(configs):
     train_cfg['optimizer'] = torch.optim.Adam(filter(lambda p: p.requires_grad,config['net'].parameters()), train_cfg['learning_rate'])
 
     exp_path = os.path.join('exp', configs['opt'].exp)
-    if configs['opt'].exp=='pose_mpi_inf_3dhp_images' and configs['opt'].continue_exp is not None:
+    if configs['opt'].exp=='pose_mpi_inf_3dhp_simple' and configs['opt'].continue_exp is not None:
         exp_path = os.path.join('exp', configs['opt'].continue_exp)
     if not os.path.exists(exp_path):
         os.mkdir(exp_path)
