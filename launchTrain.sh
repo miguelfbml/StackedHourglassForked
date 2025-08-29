@@ -9,4 +9,4 @@
 echo "Running job in reserved partition"
 
 # Commands / scripts to run (e.g., python3 train.py)
-pytho3 train_mpi_inf_3dhp.py --data_root data/motion3d
+python3 train_mpi_inf_3dhp.py --data_root data/motion3d
