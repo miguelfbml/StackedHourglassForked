@@ -35,6 +35,16 @@ def visualize_keypoints(image, keypoints, visibility=None, title=None, save_path
     # Make a copy of the image to draw on
     img_draw = image.copy()
     
+    # Ensure image is in correct format
+    if img_draw.dtype != np.uint8:
+        print(f"Warning: Image has dtype {img_draw.dtype}, converting to uint8")
+        if img_draw.max() <= 1.0:
+            img_draw = (img_draw * 255).astype(np.uint8)
+        else:
+            img_draw = img_draw.astype(np.uint8)
+    
+    print(f"Image shape: {img_draw.shape}, dtype: {img_draw.dtype}, min: {img_draw.min()}, max: {img_draw.max()}")
+    
     # Define colors for each keypoint (BGR format for OpenCV)
     colors = [
         (255, 0, 0),   # Blue - right ankle
@@ -79,7 +89,12 @@ def visualize_keypoints(image, keypoints, visibility=None, title=None, save_path
     ]
     
     # Convert image to BGR for OpenCV
-    img_bgr = cv2.cvtColor(img_draw, cv2.COLOR_RGB2BGR)
+    try:
+        img_bgr = cv2.cvtColor(img_draw, cv2.COLOR_RGB2BGR)
+    except cv2.error as e:
+        print(f"Error converting image to BGR: {e}")
+        print(f"Image info: shape={img_draw.shape}, dtype={img_draw.dtype}")
+        return img_draw  # Return original if conversion fails
     
     # Draw skeleton lines first
     for pair in skeleton_pairs:
@@ -156,6 +171,15 @@ def visualize_dataset(dataset_type='train', num_samples=30, start_idx=0, save_im
                 # Convert from BGR to RGB
                 orig_img = cv2.cvtColor(orig_img, cv2.COLOR_BGR2RGB)
                 
+                # Ensure original image is in correct format (uint8)
+                if orig_img.dtype != np.uint8:
+                    if orig_img.max() <= 1.0:
+                        # If values are in [0,1] range, scale to [0,255]
+                        orig_img = (orig_img * 255).astype(np.uint8)
+                    else:
+                        # If values are already in [0,255] range but wrong type
+                        orig_img = orig_img.astype(np.uint8)
+                
                 # Get center and scale
                 center = f['center'][i]
                 scale = f['scale'][i]
@@ -176,6 +200,15 @@ def visualize_dataset(dataset_type='train', num_samples=30, start_idx=0, save_im
                 # Get the normalized crop (as used in training)
                 input_res = 256  # Assuming input resolution is 256x256
                 cropped_img = crop(orig_img, center, scale, (input_res, input_res))
+                
+                # Ensure cropped image is in correct format (uint8)
+                if cropped_img.dtype != np.uint8:
+                    if cropped_img.max() <= 1.0:
+                        # If values are in [0,1] range, scale to [0,255]
+                        cropped_img = (cropped_img * 255).astype(np.uint8)
+                    else:
+                        # If values are already in [0,255] range but wrong type
+                        cropped_img = cropped_img.astype(np.uint8)
                 
                 # Transform keypoints to cropped image space
                 cropped_keypoints = np.copy(keypoints)
