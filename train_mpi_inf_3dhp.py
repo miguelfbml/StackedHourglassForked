@@ -71,20 +71,26 @@ def save_checkpoint(config):
 def main():
     # Parse arguments
     opt = parse_command_line()
+    print(f"[DEBUG] Starting training with arguments: {opt}")
     
     # Update paths in config
     os.environ['DATA_ROOT'] = opt.data_root
     os.environ['MPI_DATASET_ROOT'] = opt.mpi_dataset_root
+    print(f"[DEBUG] Environment variables set")
     
     # Import the task configuration for MPI-INF-3DHP
+    print(f"[DEBUG] Importing task module...")
     task = importlib.import_module('task.pose_mpi_inf_3dhp_with_images')
+    print(f"[DEBUG] Task module imported successfully")
     
     # Add opt to config before calling make_network
     task.__config__['opt'] = opt
     task.__config__['data_root'] = opt.data_root
     task.__config__['mpi_dataset_root'] = opt.mpi_dataset_root
     
+    print(f"[DEBUG] Creating network...")
     exp = task.make_network(task.__config__)
+    print(f"[DEBUG] Network created successfully")
     
     # Update config with command line arguments (redundant but safe)
     exp['opt'] = opt
@@ -98,46 +104,91 @@ def main():
         print(f"Created experiment directory: {exp_path}")
     
     # Load or initialize model
+    print(f"[DEBUG] Loading/initializing model...")
     reload(exp)
+    print(f"[DEBUG] Model loaded successfully")
     
     # Import data provider
+    print(f"[DEBUG] Importing data provider...")
     data_func = importlib.import_module(exp['data_provider'])
+    print(f"[DEBUG] Data provider imported successfully")
     
     print("Setting up datasets...")
     print(f"Data root: {opt.data_root}")
     print(f"MPI dataset root: {opt.mpi_dataset_root}")
     
     # Create training dataset
-    train_dataset = data_func.Dataset(exp, train=True, 
-                                    data_root=opt.data_root,
-                                    mpi_dataset_root=opt.mpi_dataset_root)
-    print(f"Training dataset size: {len(train_dataset)}")
+    print(f"[DEBUG] Creating training dataset...")
+    try:
+        train_dataset = data_func.Dataset(exp, train=True, 
+                                        data_root=opt.data_root,
+                                        mpi_dataset_root=opt.mpi_dataset_root)
+        print(f"✓ Training dataset size: {len(train_dataset)}")
+    except Exception as e:
+        print(f"✗ Error creating training dataset: {e}")
+        import traceback
+        traceback.print_exc()
+        return
     
     # Create validation dataset  
-    val_dataset = data_func.Dataset(exp, train=False,
-                                  data_root=opt.data_root, 
-                                  mpi_dataset_root=opt.mpi_dataset_root)
-    print(f"Validation dataset size: {len(val_dataset)}")
+    print(f"[DEBUG] Creating validation dataset...")
+    try:
+        val_dataset = data_func.Dataset(exp, train=False,
+                                      data_root=opt.data_root, 
+                                      mpi_dataset_root=opt.mpi_dataset_root)
+        print(f"✓ Validation dataset size: {len(val_dataset)}")
+    except Exception as e:
+        print(f"✗ Error creating validation dataset: {e}")
+        import traceback
+        traceback.print_exc()
+        return
     
     # Create data loaders
-    train_loader = torch.utils.data.DataLoader(
-        train_dataset, 
-        batch_size=exp['train']['batchsize'],
-        shuffle=True,
-        num_workers=exp['train']['num_workers'],
-        pin_memory=True
-    )
-    
-    val_loader = torch.utils.data.DataLoader(
-        val_dataset,
-        batch_size=exp['train']['batchsize'],
-        shuffle=False, 
-        num_workers=exp['train']['num_workers'],
-        pin_memory=True
-    )
+    print(f"[DEBUG] Creating data loaders...")
+    try:
+        train_loader = torch.utils.data.DataLoader(
+            train_dataset, 
+            batch_size=exp['train']['batchsize'],
+            shuffle=True,
+            num_workers=0,  # Disable multiprocessing for debugging
+            pin_memory=False,  # Disable pin_memory for debugging
+            collate_fn=data_func.custom_collate_fn
+        )
+        print(f"✓ Training loader created")
+        
+        val_loader = torch.utils.data.DataLoader(
+            val_dataset,
+            batch_size=exp['train']['batchsize'],
+            shuffle=False, 
+            num_workers=0,  # Disable multiprocessing for debugging
+            pin_memory=False,  # Disable pin_memory for debugging
+            collate_fn=data_func.custom_collate_fn
+        )
+        print(f"✓ Validation loader created")
+    except Exception as e:
+        print(f"✗ Error creating data loaders: {e}")
+        import traceback
+        traceback.print_exc()
+        return
     
     print(f"Training batches: {len(train_loader)}")
     print(f"Validation batches: {len(val_loader)}")
+    
+    # Test loading a single batch
+    print(f"[DEBUG] Testing data loading...")
+    try:
+        test_batch = next(iter(train_loader))
+        print(f"✓ Successfully loaded test batch")
+        if isinstance(test_batch, dict):
+            print(f"  - Images shape: {test_batch['imgs'].shape}")
+            print(f"  - Heatmaps shape: {test_batch['heatmaps'].shape}")
+        else:
+            print(f"  - Unexpected batch format: {type(test_batch)}")
+    except Exception as e:
+        print(f"✗ Error loading test batch: {e}")
+        import traceback
+        traceback.print_exc()
+        return
     
     # Training loop
     print("Starting training...")

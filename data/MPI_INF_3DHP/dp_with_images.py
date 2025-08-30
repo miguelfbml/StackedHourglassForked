@@ -56,6 +56,10 @@ class GenerateHeatmap():
 
 class Dataset(torch.utils.data.Dataset):
     def __init__(self, config, train=True, data_root="data/motion3d", mpi_dataset_root="/nas-ctm01/datasets/public/mpi_inf_3dhp"):
+        print(f"[DEBUG] Initializing Dataset with train={train}")
+        print(f"[DEBUG] data_root: {data_root}")
+        print(f"[DEBUG] mpi_dataset_root: {mpi_dataset_root}")
+        
         self.input_res = config['train']['input_res']
         self.output_res = config['train']['output_res']
         self.generateHeatmap = GenerateHeatmap(self.output_res, config['inference']['num_parts'])
@@ -66,10 +70,12 @@ class Dataset(torch.utils.data.Dataset):
         # Load pose data from npz files
         print(f"Loading MPI-INF-3DHP data from {data_root}")
         if train:
+            print(f"[DEBUG] Loading training data...")
             self.poses_3d, self.poses_2d = self.load_mpi_inf_3dhp_data(data_root, train=True)
             if not self.poses_2d:
                 raise ValueError(f"No training data found in {data_root}")
         else:
+            print(f"[DEBUG] Loading validation data...")
             self.poses_3d, self.poses_2d, self.valid_frames = self.load_mpi_inf_3dhp_data(data_root, train=False)
             if not self.poses_2d:
                 raise ValueError(f"No validation data found in {data_root}")
@@ -77,10 +83,12 @@ class Dataset(torch.utils.data.Dataset):
         print(f"Loaded data for {len(self.poses_2d)} sequences")
         
         # Create index mapping for frames
+        print(f"[DEBUG] Creating frame index...")
         self.frame_index = []
         self.sequence_info = {}
         
         if train:
+            print(f"[DEBUG] Processing training sequences...")
             # Training data: S1-S8, Seq1-Seq2, cameras 0,1,2,4,5,6,7,8
             for key in self.poses_2d.keys():
                 subject_name, seq_name, cam = key
@@ -89,8 +97,12 @@ class Dataset(torch.utils.data.Dataset):
                 # Sample every 10th frame to reduce dataset size and avoid missing images
                 # Also limit to first 80% of frames to avoid end-of-sequence issues
                 max_frame = int(num_frames * 0.8)
+                sampled_frames = 0
                 for frame_idx in range(0, max_frame, 10):
                     self.frame_index.append((key, frame_idx))
+                    sampled_frames += 1
+                    
+                print(f"  - {key}: {num_frames} total frames, sampled {sampled_frames}")
                     
                 # Store sequence info for image loading
                 self.sequence_info[key] = {
@@ -100,6 +112,7 @@ class Dataset(torch.utils.data.Dataset):
                     'image_dir': f"{mpi_dataset_root}/{subject_name}/Seq{seq_name}/imageSequence/video_{cam}"
                 }
         else:
+            print(f"[DEBUG] Processing validation sequences...")
             # Test data
             for key in self.poses_2d.keys():
                 sequence_name = key
@@ -110,8 +123,12 @@ class Dataset(torch.utils.data.Dataset):
                 max_frame = int(num_frames * 0.8)
                 valid_frame_indices = [f for f in valid_frame_indices if f < max_frame]
                 
+                sampled_frames = 0
                 for frame_idx in valid_frame_indices[::10]:  # Sample every 10th frame
                     self.frame_index.append((key, frame_idx))
+                    sampled_frames += 1
+                    
+                print(f"  - {key}: {num_frames} total frames, {len(valid_frame_indices)} valid, sampled {sampled_frames}")
                     
                 # Store sequence info for test image loading
                 self.sequence_info[key] = {
@@ -120,6 +137,7 @@ class Dataset(torch.utils.data.Dataset):
                 }
         
         print(f"Loaded {len(self.frame_index)} frames for {'training' if train else 'validation'}")
+        print(f"[DEBUG] Dataset initialization complete")
         
         # Left-right keypoint mapping for H36M/MPI format (17 keypoints)
         self.kps_left = [5, 6, 7, 11, 12, 13]  # Left hip, knee, ankle, shoulder, elbow, wrist
