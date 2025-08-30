@@ -15,7 +15,7 @@ def test_quick():
     print("=== Quick MPI-INF-3DHP Data Loading Test ===")
     
     # Check if data files exist
-    data_root = 'data/MPI_INF_3DHP/motion3d'
+    data_root = 'data/motion3d'  # Changed from 'data/MPI_INF_3DHP/motion3d'
     train_file = os.path.join(data_root, "data_train_3dhp.npz")
     test_file = os.path.join(data_root, "data_test_3dhp.npz")
     

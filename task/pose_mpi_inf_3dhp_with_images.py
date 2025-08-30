@@ -42,7 +42,7 @@ __config__ = {
     
     # MPI-INF-3DHP specific configuration
     'mpi_dataset_root': '/nas-ctm01/datasets/public/mpi_inf_3dhp',
-    'data_root': 'data/MPI_INF_3DHP/motion3d',
+    'data_root': 'data/motion3d',  # Changed from 'data/MPI_INF_3DHP/motion3d'
 }
 
 class Trainer(nn.Module):
