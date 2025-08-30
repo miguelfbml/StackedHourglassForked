@@ -24,7 +24,7 @@ def parse_command_line():
     parser.add_argument('-c', '--continue_exp', type=str, help='continue exp')
     parser.add_argument('-e', '--exp', type=str, default='mpi_inf_3dhp_stacked_hourglass', help='experiment name')
     parser.add_argument('-m', '--max_iters', type=int, default=500, help='max number of iterations (thousands)')
-    parser.add_argument('--data_root', type=str, default='data/MPI_INF_3DHP/motion3d', help='path to motion3d data')
+    parser.add_argument('--data_root', type=str, default='data/motion3d', help='path to motion3d data')
     parser.add_argument('--mpi_dataset_root', type=str, default='/nas-ctm01/datasets/public/mpi_inf_3dhp', help='path to MPI-INF-3DHP images')
     args = parser.parse_args()
     return args
