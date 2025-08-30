@@ -89,7 +89,12 @@ def make_network(configs):
 
     train_cfg['optimizer'] = torch.optim.Adam(config['net'].parameters(), train_cfg['learning_rate'])
 
-    exp_path = os.path.join('exp', configs['opt'].exp)
+    # Create experiment directory - handle case where 'opt' might not exist yet
+    if 'opt' in configs and hasattr(configs['opt'], 'exp'):
+        exp_path = os.path.join('exp', configs['opt'].exp)
+    else:
+        exp_path = os.path.join('exp', 'default_mpi_inf_3dhp')
+    
     if not os.path.exists(exp_path):
         os.makedirs(exp_path)
     logger = open(os.path.join(exp_path, 'log'), 'a+')

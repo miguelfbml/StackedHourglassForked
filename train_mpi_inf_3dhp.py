@@ -78,9 +78,15 @@ def main():
     
     # Import the task configuration for MPI-INF-3DHP
     task = importlib.import_module('task.pose_mpi_inf_3dhp_with_images')
+    
+    # Add opt to config before calling make_network
+    task.__config__['opt'] = opt
+    task.__config__['data_root'] = opt.data_root
+    task.__config__['mpi_dataset_root'] = opt.mpi_dataset_root
+    
     exp = task.make_network(task.__config__)
     
-    # Update config with command line arguments
+    # Update config with command line arguments (redundant but safe)
     exp['opt'] = opt
     exp['data_root'] = opt.data_root
     exp['mpi_dataset_root'] = opt.mpi_dataset_root
