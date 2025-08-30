@@ -56,10 +56,15 @@ class Trainer(nn.Module):
         self.inference_keys = inference_keys
         self.calc_loss = calc_loss
 
-    def forward(self, imgs, **inputs):
+    def forward(self, imgs=None, **inputs):
+        # Handle case where imgs might be in inputs dict
+        if imgs is None and 'imgs' in inputs:
+            imgs = inputs['imgs']
+        
         inps = {}
         for i in self.inference_keys:
-            inps[i] = inputs[i]
+            if i in inputs:
+                inps[i] = inputs[i]
 
         if not self.training:
             return self.model(imgs)
@@ -109,7 +114,7 @@ def make_network(configs):
         config['batch_id'] = batch_id
 
         if phase != 'inference':
-            result = net(inputs['imgs'], **{i: inputs[i] for i in inputs if i!='imgs'})
+            result = net(**inputs)  # Pass all inputs as keyword arguments
             num_loss = len(config['train']['loss'])
 
             losses = result['losses']
