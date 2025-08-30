@@ -4,9 +4,23 @@ import os
 import torch
 import numpy as np
 import torch.utils.data
-import utils.img
 from imageio import imread
 import glob
+
+def preprocess_image(img):
+    """Simple image preprocessing - color augmentation"""
+    if np.random.random() > 0.5:
+        # Random brightness
+        img = img * (0.8 + np.random.random() * 0.4)
+        img = np.clip(img, 0, 1)
+    
+    if np.random.random() > 0.5:
+        # Random contrast
+        mean = np.mean(img)
+        img = (img - mean) * (0.8 + np.random.random() * 0.4) + mean
+        img = np.clip(img, 0, 1)
+    
+    return img
 
 class GenerateHeatmap():
     def __init__(self, output_res, num_parts):
@@ -262,7 +276,7 @@ class Dataset(torch.utils.data.Dataset):
                 keypoints_2d[j] = keypoints_2d_copy[i]
         
         # Color augmentation
-        img = self.preprocess(img)
+        img = preprocess_image(img)
         
         return img, keypoints_2d
 
