@@ -8,6 +8,7 @@ from torch import nn
 import os
 from torch.nn import DataParallel
 from utils.misc import make_input, make_output, importNet
+from utils.evaluation import calculate_mpjpe, calculate_pck
 
 __config__ = {
     'data_provider': 'data.MPI_INF_3DHP.dp_with_images',
@@ -118,6 +119,14 @@ def make_network(configs):
             num_loss = len(config['train']['loss'])
 
             losses = {i[0]: result[-num_loss + idx]*i[1] for idx, i in enumerate(config['train']['loss'])}
+            
+            # Calculate MPJPE and PCK for monitoring
+            pred_heatmaps = result[0] if isinstance(result, list) else result
+            target_heatmaps = inputs['heatmaps']
+            
+            with torch.no_grad():
+                mpjpe = calculate_mpjpe(pred_heatmaps, target_heatmaps)
+                pck = calculate_pck(pred_heatmaps, target_heatmaps, threshold=2.0)
                         
             loss = 0
             toprint = '\n{}: '.format(batch_id)
@@ -133,8 +142,14 @@ def make_network(configs):
                     toprint += '\n{}'.format(i)
                     for j in my_loss:
                         toprint += ' {}'.format(format(j.mean(), '.8f'))
+            
+            # Add MPJPE and PCK to the log
+            toprint += ' | MPJPE: {:.2f}px | PCK@2px: {:.1f}%'.format(mpjpe, pck)
             logger.write(toprint)
             logger.flush()
+            
+            # Print MPJPE to console for easy monitoring
+            print(f"Batch {batch_id} [{phase}] - MPJPE: {mpjpe:.2f}px, PCK@2px: {pck:.1f}%")
             
             if phase == 'train':
                 optimizer = train_cfg['optimizer']
