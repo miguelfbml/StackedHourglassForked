@@ -62,34 +62,36 @@ class Trainer(nn.Module):
             imgs = inputs['imgs']
         
         inps = {}
-        for i in self.inference_keys:
-            if i in inputs:
+        labels = {}
+
+        for i in inputs:
+            if i in self.inference_keys:
                 inps[i] = inputs[i]
+            else:
+                labels[i] = inputs[i]
 
         if not self.training:
-            return self.model(imgs)
+            return self.model(imgs, **inps)
         else:
-            combined_hm_preds = self.model(imgs)
-            if self.calc_loss is not None:
-                return self.calc_loss(combined_hm_preds, inputs)
-            else:
-                return combined_hm_preds
+            combined_hm_preds = self.model(imgs, **inps)
+            if type(combined_hm_preds)!=list and type(combined_hm_preds)!=tuple:
+                combined_hm_preds = [combined_hm_preds]
+            loss = self.calc_loss(**labels, combined_hm_preds=combined_hm_preds)
+            return list(combined_hm_preds) + list([loss])
 
 def make_network(configs):
     train_cfg = configs['train']
     config = configs['inference']
     
-    def calc_loss(*args, **kwargs):
-        return make_output(configs, *args, **kwargs)
-
+    ## creating new posenet
     PoseNet = importNet(configs['network'])
     poseNet = PoseNet(config['nstack'], config['inp_dim'], config['oup_dim'])
 
+    def calc_loss(*args, **kwargs):
+        return poseNet.calc_loss(*args, **kwargs)
+
     forward_net = Trainer(poseNet, config['keys'], calc_loss)
     
-    def calc_loss(*args, **kwargs):
-        return make_output(configs, *args, **kwargs)
-
     config['net'] = DataParallel(forward_net)
 
     train_cfg['optimizer'] = torch.optim.Adam(config['net'].parameters(), train_cfg['learning_rate'])
@@ -115,9 +117,10 @@ def make_network(configs):
 
         if phase != 'inference':
             result = net(**inputs)  # Pass all inputs as keyword arguments
+            combined_hm_preds = result[:-1]  # All but last element are predictions
+            losses = result[-1]  # Last element is loss dict
             num_loss = len(config['train']['loss'])
 
-            losses = result['losses']
             loss = 0
             toprint = '\n{}: '.format(batch_id)
             for i in range(len(config['train']['loss'])):
