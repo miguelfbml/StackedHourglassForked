@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 Enhanced training script for MPI-INF-3DHP with loss and MPJPE tracking
+Based on the working train.py structure
 """
 
 import torch
@@ -9,9 +10,7 @@ import numpy as np
 import argparse
 import os
 import time
-
-# Import your existing components (remove ref import)
-from utils.utils import adjust_learning_rate
+import sys
 
 def calculate_mpjpe_pixels(pred_heatmaps, gt_heatmaps, input_res=256):
     """
@@ -53,6 +52,14 @@ def calculate_mpjpe_pixels(pred_heatmaps, gt_heatmaps, input_res=256):
     mpjpe = np.mean(distances)
     
     return mpjpe
+
+def adjust_learning_rate(optimizer, epoch, lr, schedule):
+    """Adjust learning rate based on schedule"""
+    if epoch in schedule:
+        lr *= 0.1
+        for param_group in optimizer.param_groups:
+            param_group['lr'] = lr
+    return lr
 
 def train_epoch(model, train_loader, optimizer, criterion, device, epoch):
     """Train for one epoch"""
@@ -155,8 +162,6 @@ def main():
     parser.add_argument('--lr', default=2.5e-4, type=float, help='Learning rate')
     parser.add_argument('--resume', action='store_true', help='Resume from checkpoint')
     parser.add_argument('--eval_only', action='store_true', help='Only evaluate')
-    parser.add_argument('--data_root', default='data/MPI_INF_3DHP/motion3d', help='Data root')
-    parser.add_argument('--mpi_dataset_root', default='/nas-ctm01/datasets/public/mpi_inf_3dhp', help='MPI dataset root')
     
     args = parser.parse_args()
     
@@ -173,12 +178,10 @@ def main():
     exp_dir = os.path.join('exp', args.exp)
     os.makedirs(exp_dir, exist_ok=True)
     
-    # Import task configuration
+    # Import task configuration (following train.py pattern)
     try:
         import task.pose_mpi_inf_3dhp_with_images as task_module
         config = task_module.__config__
-        config['data_root'] = args.data_root
-        config['mpi_dataset_root'] = args.mpi_dataset_root
         print("✅ Loaded MPI-INF-3DHP task configuration")
     except Exception as e:
         print(f"❌ Error loading task: {e}")
@@ -187,8 +190,7 @@ def main():
     # Load data
     print("\n📊 Loading datasets...")
     try:
-        from data.MPI_INF_3DHP.dp_with_images import init
-        train_loader, val_loader, test_loader = init(config)
+        train_loader, val_loader, test_loader = task_module.init(config)
         print(f"✅ Train samples: {len(train_loader.dataset)}")
         print(f"✅ Val/Test samples: {len(val_loader.dataset)}")
     except Exception as e:
@@ -211,7 +213,7 @@ def main():
         print(f"❌ Error loading model: {e}")
         return
     
-    # Set up optimizer and loss
+    # Set up optimizer and loss (following train.py pattern)
     optimizer = torch.optim.RMSprop(model.parameters(), lr=args.lr)
     criterion = nn.MSELoss()
     
@@ -223,7 +225,7 @@ def main():
         checkpoint_path = os.path.join(exp_dir, 'checkpoint.pth')
         if os.path.exists(checkpoint_path):
             print(f"📂 Loading checkpoint: {checkpoint_path}")
-            checkpoint = torch.load(checkpoint_path)
+            checkpoint = torch.load(checkpoint_path, map_location=device)
             model.load_state_dict(checkpoint['model_state_dict'])
             optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
             start_epoch = checkpoint['epoch'] + 1
@@ -247,8 +249,8 @@ def main():
         print(f"{'='*60}")
         
         # Adjust learning rate
-        lr = adjust_learning_rate(optimizer, epoch, args.lr, schedule=[30, 40])
-        print(f"Learning rate: {lr}")
+        current_lr = adjust_learning_rate(optimizer, epoch, args.lr, schedule=[30, 40])
+        print(f"Learning rate: {current_lr}")
         
         # Train
         train_loss, train_mpjpe = train_epoch(model, train_loader, optimizer, criterion, device, epoch + 1)
