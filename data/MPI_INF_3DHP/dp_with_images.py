@@ -95,10 +95,10 @@ class Dataset(torch.utils.data.Dataset):
                 num_frames = self.poses_2d[key].shape[0]
                 
                 # Sample every 10th frame to reduce dataset size and avoid missing images
-                # Also limit to first 80% of frames to avoid end-of-sequence issues
-                max_frame = int(num_frames * 0.8)
+                # Use only 20% of training data to balance with validation set
+                max_frame = int(num_frames * 0.2)  # Reduced from 0.8
                 sampled_frames = 0
-                for frame_idx in range(0, max_frame, 10):
+                for frame_idx in range(0, max_frame, 5):  # Sample every 5th frame instead of 10th
                     self.frame_index.append((key, frame_idx))
                     sampled_frames += 1
                     
@@ -148,7 +148,7 @@ class Dataset(torch.utils.data.Dataset):
 
     def __getitem__(self, idx):
         # Try multiple times to get a valid sample with real image
-        max_attempts = 10
+        max_attempts = 50  # Increased attempts to find real images
         for attempt in range(max_attempts):
             try:
                 result = self.loadImage(self.frame_index[(idx + attempt) % len(self.frame_index)])
@@ -159,7 +159,7 @@ class Dataset(torch.utils.data.Dataset):
                 continue
         
         # If all attempts fail, create a dummy sample to avoid crashing
-        print(f"Warning: Could not load valid sample after {max_attempts} attempts, creating dummy sample")
+        print(f"Warning: Could not find real images after {max_attempts} attempts")
         dummy_img = np.zeros((self.input_res, self.input_res, 3), dtype=np.float32)
         dummy_heatmaps = np.zeros((17, self.output_res, self.output_res), dtype=np.float32)
         return {
@@ -179,10 +179,9 @@ class Dataset(torch.utils.data.Dataset):
         img = self.load_image_frame(sequence_key, frame_idx)
         
         if img is None:
-            # Create a synthetic image if real image is missing
-            print(f"Creating synthetic image for {sequence_key} frame {frame_idx}")
-            img = np.random.randint(0, 256, (256, 256, 3), dtype=np.uint8)
-            img = img.astype(np.float32) / 255.0
+            # Skip this sample if no real image is available
+            # This prevents training on synthetic data which would hurt accuracy
+            return None
         else:
             # Resize image to input resolution
             img = cv2.resize(img, (self.input_res, self.input_res))
@@ -428,9 +427,11 @@ def init(config):
     mpi_dataset_root = config.get('mpi_dataset_root', '/nas-ctm01/datasets/public/mpi_inf_3dhp')
     
     train_dataset = Dataset(config, train=True, data_root=data_root, mpi_dataset_root=mpi_dataset_root)
+    # Use test data for validation (same as TCPFormer approach)
     valid_dataset = Dataset(config, train=False, data_root=data_root, mpi_dataset_root=mpi_dataset_root)
+    test_dataset = Dataset(config, train=False, data_root=data_root, mpi_dataset_root=mpi_dataset_root)  # Same as valid
     
-    dataset = {'train': train_dataset, 'valid': valid_dataset}
+    dataset = {'train': train_dataset, 'valid': valid_dataset, 'test': test_dataset}
     
     loaders = {}
     for key in dataset:

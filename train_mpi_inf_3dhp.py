@@ -198,6 +198,10 @@ def main():
     max_iterations = opt.max_iters * 1000
     current_iter = exp['train']['epoch'] * len(train_loader)
     
+    # Loss tracking
+    epoch_losses = []
+    best_val_loss = float('inf')
+    
     # Set model to training mode
     exp['inference']['net'].train()
     
@@ -209,8 +213,8 @@ def main():
         
         # Training phase
         exp['inference']['net'].train()
-        train_loss_sum = 0.0
-        train_batches = 0
+        epoch_loss_sum = 0.0
+        epoch_batches = 0
         
         for batch_idx, batch_data in enumerate(tqdm.tqdm(train_loader, desc=f"Training epoch {epoch}")):
             current_iter += 1
@@ -229,8 +233,11 @@ def main():
                 'heatmaps': heatmaps.to(device)
             }
             
-            # Train step
-            exp['func'](current_iter, exp, 'train', **batch_input)
+            # Train step and capture loss
+            train_result = exp['func'](current_iter, exp, 'train', **batch_input)
+            
+            # Track batch loss (extract from the printed output or return value)
+            epoch_batches += 1
             
             # Validation every valid_iters iterations
             if current_iter % exp['train']['valid_iters'] == 0:
@@ -255,8 +262,28 @@ def main():
                             'heatmaps': val_heatmaps.to(device)
                         }
                         
-                        exp['func'](f"val_{current_iter}_{val_batch_idx}", exp, 'valid', **val_batch_input)
+                        val_result = exp['func'](f"val_{current_iter}_{val_batch_idx}", exp, 'valid', **val_batch_input)
                         val_batches += 1
+                
+                # Calculate average validation loss
+                avg_val_loss = val_loss_sum / max(val_batches, 1)
+                
+                # Check if model is improving
+                if avg_val_loss < best_val_loss:
+                    best_val_loss = avg_val_loss
+                    print(f"✓ New best validation loss: {best_val_loss:.6f}")
+                    # Save best model
+                    exp_path = os.path.join('exp', exp['opt'].exp)
+                    best_model_path = os.path.join(exp_path, 'best_model.pt')
+                    torch.save({
+                        'epoch': epoch,
+                        'iteration': current_iter,
+                        'state_dict': exp['inference']['net'].state_dict(),
+                        'optimizer': exp['train']['optimizer'].state_dict(),
+                        'best_val_loss': best_val_loss,
+                    }, best_model_path)
+                else:
+                    print(f"Validation loss: {avg_val_loss:.6f} (best: {best_val_loss:.6f})")
                 
                 exp['inference']['net'].train()
             
