@@ -64,14 +64,20 @@ class Dataset(torch.utils.data.Dataset):
         raw_data = npz_data['data'].item()
         
         samples = []
+        total_images_found = 0
+        total_images_missing = 0
         
         if train:
+            print("\n=== TRAINING DATA ANALYSIS ===")
             # Training data: {'S1 Seq1': [...], 'S2 Seq1': [...], ...}
             for subject_seq, seq_data in raw_data.items():
-                print(f"Processing {subject_seq}")
+                print(f"\nProcessing {subject_seq}")
                 parts = subject_seq.split(' ')
                 subject = parts[0]  # 'S1'
                 sequence = parts[1]  # 'Seq1'
+                
+                subject_images_found = 0
+                subject_images_missing = 0
                 
                 # seq_data is a list containing dictionaries and integers
                 if isinstance(seq_data, list):
@@ -87,13 +93,14 @@ class Dataset(torch.utils.data.Dataset):
                                         data_2d = camera_data['data_2d']
                                         data_3d = camera_data['data_3d']
                                         
-                                        print(f"  Found camera {camera_idx}: {len(data_2d)} frames")
+                                        camera_images_found = 0
+                                        camera_images_missing = 0
                                         
-                                        # Sample every 20th frame to reduce dataset size
+                                        # Check all frames to count images (sample every 20th)
                                         for frame_idx in range(0, len(data_2d), 20):
-                                            # Find corresponding image
                                             img_path = self.find_image_path(subject, sequence, frame_idx + 1, camera_idx, train=True)
                                             if img_path and os.path.exists(img_path):
+                                                camera_images_found += 1
                                                 samples.append({
                                                     'img_path': img_path,
                                                     'joint_2d': data_2d[frame_idx],
@@ -103,26 +110,40 @@ class Dataset(torch.utils.data.Dataset):
                                                     'frame_idx': frame_idx + 1,
                                                     'camera': camera_idx
                                                 })
+                                            else:
+                                                camera_images_missing += 1
+                                        
+                                        print(f"  Camera {camera_idx}: {camera_images_found} images found, {camera_images_missing} missing (out of {len(data_2d)//20} sampled)")
+                                        subject_images_found += camera_images_found
+                                        subject_images_missing += camera_images_missing
+                
+                print(f"  {subject_seq} TOTAL: {subject_images_found} images found, {subject_images_missing} missing")
+                total_images_found += subject_images_found
+                total_images_missing += subject_images_missing
                 
                 # Stop early for initial testing
                 if len(samples) > 1000:
                     print(f"  Stopping early with {len(samples)} samples for testing")
                     break
+                    
         else:
+            print("\n=== TEST DATA ANALYSIS ===")
             # Test data: {'TS1': {...}, 'TS2': {...}, ...} - Include all samples
             for subject, subject_data in raw_data.items():
-                print(f"Processing {subject}")
+                print(f"\nProcessing {subject}")
                 
                 if isinstance(subject_data, dict) and 'data_2d' in subject_data and 'data_3d' in subject_data:
                     data_2d = subject_data['data_2d']
                     data_3d = subject_data['data_3d']
                     
-                    print(f"  Found {len(data_2d)} frames for {subject}")
+                    subject_images_found = 0
+                    subject_images_missing = 0
                     
-                    # Take every 10th frame for test (still need to sample to avoid huge dataset)
+                    # Take every 10th frame for test
                     for frame_idx in range(0, len(data_2d), 10):
                         img_path = self.find_image_path(subject, None, frame_idx + 1, 0, train=False)
                         if img_path and os.path.exists(img_path):
+                            subject_images_found += 1
                             samples.append({
                                 'img_path': img_path,
                                 'joint_2d': data_2d[frame_idx],
@@ -132,10 +153,18 @@ class Dataset(torch.utils.data.Dataset):
                                 'frame_idx': frame_idx + 1,
                                 'camera': 0
                             })
+                        else:
+                            subject_images_missing += 1
                     
-                    print(f"  Added {len([s for s in samples if s['subject'] == subject])} samples for {subject}")
+                    print(f"  {subject}: {subject_images_found} images found, {subject_images_missing} missing (out of {len(data_2d)//10} sampled from {len(data_2d)} total frames)")
+                    total_images_found += subject_images_found
+                    total_images_missing += subject_images_missing
         
-        print(f"Total samples found: {len(samples)}")
+        print(f"\n=== SUMMARY ===")
+        print(f"Total images found: {total_images_found}")
+        print(f"Total images missing: {total_images_missing}")
+        print(f"Total samples created: {len(samples)}")
+        
         return samples
 
     def find_image_path(self, subject, sequence, frame_idx, camera_idx, train=True):
