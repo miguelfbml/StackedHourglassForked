@@ -69,6 +69,8 @@ class Dataset(torch.utils.data.Dataset):
         
         if train:
             print("\n=== TRAINING DATA ANALYSIS ===")
+            print("Processing ALL subjects (S1-S8) and ALL sequences (Seq1-Seq2)...")
+            
             # Training data: {'S1 Seq1': [...], 'S2 Seq1': [...], ...}
             for subject_seq, seq_data in raw_data.items():
                 print(f"\nProcessing {subject_seq}")
@@ -96,8 +98,8 @@ class Dataset(torch.utils.data.Dataset):
                                         camera_images_found = 0
                                         camera_images_missing = 0
                                         
-                                        # Check all frames to count images (sample every 20th)
-                                        for frame_idx in range(0, len(data_2d), 20):
+                                        # Sample every 50th frame to keep dataset manageable
+                                        for frame_idx in range(0, len(data_2d), 50):
                                             img_path = self.find_image_path(subject, sequence, frame_idx + 1, camera_idx, train=True)
                                             if img_path and os.path.exists(img_path):
                                                 camera_images_found += 1
@@ -113,21 +115,22 @@ class Dataset(torch.utils.data.Dataset):
                                             else:
                                                 camera_images_missing += 1
                                         
-                                        print(f"  Camera {camera_idx}: {camera_images_found} images found, {camera_images_missing} missing (out of {len(data_2d)//20} sampled)")
+                                        if camera_images_found > 0 or camera_images_missing > 0:
+                                            print(f"  Camera {camera_idx}: {camera_images_found} images found, {camera_images_missing} missing (sampled {len(data_2d)//50} from {len(data_2d)} frames)")
+                                        
                                         subject_images_found += camera_images_found
                                         subject_images_missing += camera_images_missing
                 
-                print(f"  {subject_seq} TOTAL: {subject_images_found} images found, {subject_images_missing} missing")
+                if subject_images_found > 0 or subject_images_missing > 0:
+                    print(f"  {subject_seq} TOTAL: {subject_images_found} images found, {subject_images_missing} missing")
+                
                 total_images_found += subject_images_found
                 total_images_missing += subject_images_missing
-                
-                # Stop early for initial testing
-                if len(samples) > 1000:
-                    print(f"  Stopping early with {len(samples)} samples for testing")
-                    break
                     
         else:
             print("\n=== TEST DATA ANALYSIS ===")
+            print("Processing ALL test subjects (TS1-TS6)...")
+            
             # Test data: {'TS1': {...}, 'TS2': {...}, ...} - Include all samples
             for subject, subject_data in raw_data.items():
                 print(f"\nProcessing {subject}")
@@ -139,8 +142,8 @@ class Dataset(torch.utils.data.Dataset):
                     subject_images_found = 0
                     subject_images_missing = 0
                     
-                    # Take every 10th frame for test
-                    for frame_idx in range(0, len(data_2d), 10):
+                    # Take every 20th frame for test
+                    for frame_idx in range(0, len(data_2d), 20):
                         img_path = self.find_image_path(subject, None, frame_idx + 1, 0, train=False)
                         if img_path and os.path.exists(img_path):
                             subject_images_found += 1
@@ -156,14 +159,28 @@ class Dataset(torch.utils.data.Dataset):
                         else:
                             subject_images_missing += 1
                     
-                    print(f"  {subject}: {subject_images_found} images found, {subject_images_missing} missing (out of {len(data_2d)//10} sampled from {len(data_2d)} total frames)")
+                    print(f"  {subject}: {subject_images_found} images found, {subject_images_missing} missing (sampled {len(data_2d)//20} from {len(data_2d)} frames)")
                     total_images_found += subject_images_found
                     total_images_missing += subject_images_missing
         
-        print(f"\n=== SUMMARY ===")
+        print(f"\n=== FINAL SUMMARY ===")
         print(f"Total images found: {total_images_found}")
         print(f"Total images missing: {total_images_missing}")
         print(f"Total samples created: {len(samples)}")
+        print(f"Success rate: {total_images_found/(total_images_found+total_images_missing)*100:.1f}%" if (total_images_found+total_images_missing) > 0 else "No images checked")
+        
+        if train:
+            # Count subjects and sequences
+            subjects = set()
+            sequences = set()
+            cameras = set()
+            for sample in samples:
+                subjects.add(sample['subject'])
+                sequences.add(sample['sequence'])
+                cameras.add(sample['camera'])
+            print(f"Subjects included: {sorted(subjects)}")
+            print(f"Sequences included: {sorted(sequences)}")
+            print(f"Cameras included: {sorted(cameras)}")
         
         return samples
 
