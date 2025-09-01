@@ -70,6 +70,7 @@ class Dataset(torch.utils.data.Dataset):
         if train:
             print("\n=== TRAINING DATA ANALYSIS ===")
             print("Processing ALL subjects (S1-S8) and ALL sequences (Seq1-Seq2)...")
+            print("🚀 MAXIMIZING TRAINING DATA - Using every 5th frame!")
             
             # Training data: {'S1 Seq1': [...], 'S2 Seq1': [...], ...}
             for subject_seq, seq_data in raw_data.items():
@@ -98,8 +99,9 @@ class Dataset(torch.utils.data.Dataset):
                                         camera_images_found = 0
                                         camera_images_missing = 0
                                         
-                                        # Sample every 50th frame to keep dataset manageable
-                                        for frame_idx in range(0, len(data_2d), 50):
+                                        # 🔥 MUCH MORE AGGRESSIVE SAMPLING: Every 5th frame instead of 50th!
+                                        frame_step = 5
+                                        for frame_idx in range(0, len(data_2d), frame_step):
                                             img_path = self.find_image_path(subject, sequence, frame_idx + 1, camera_idx, train=True)
                                             if img_path and os.path.exists(img_path):
                                                 camera_images_found += 1
@@ -115,13 +117,13 @@ class Dataset(torch.utils.data.Dataset):
                                             else:
                                                 camera_images_missing += 1
                                         
-                                        if camera_images_found > 0 or camera_images_missing > 0:
-                                            print(f"  Camera {camera_idx}: {camera_images_found} images found, {camera_images_missing} missing (sampled {len(data_2d)//50} from {len(data_2d)} frames)")
+                                        if camera_images_found > 0:
+                                            print(f"  Camera {camera_idx}: {camera_images_found} images found, {camera_images_missing} missing (sampled {len(data_2d)//frame_step} from {len(data_2d)} frames)")
                                         
                                         subject_images_found += camera_images_found
                                         subject_images_missing += camera_images_missing
                 
-                if subject_images_found > 0 or subject_images_missing > 0:
+                if subject_images_found > 0:
                     print(f"  {subject_seq} TOTAL: {subject_images_found} images found, {subject_images_missing} missing")
                 
                 total_images_found += subject_images_found
@@ -130,6 +132,7 @@ class Dataset(torch.utils.data.Dataset):
         else:
             print("\n=== TEST DATA ANALYSIS ===")
             print("Processing ALL test subjects (TS1-TS6)...")
+            print("🚀 MAXIMIZING TEST DATA - Using every 3rd frame!")
             
             # Test data: {'TS1': {...}, 'TS2': {...}, ...} - Include all samples
             for subject, subject_data in raw_data.items():
@@ -142,8 +145,9 @@ class Dataset(torch.utils.data.Dataset):
                     subject_images_found = 0
                     subject_images_missing = 0
                     
-                    # Take every 20th frame for test
-                    for frame_idx in range(0, len(data_2d), 20):
+                    # 🔥 MORE AGGRESSIVE TEST SAMPLING: Every 3rd frame instead of 20th!
+                    frame_step = 3
+                    for frame_idx in range(0, len(data_2d), frame_step):
                         img_path = self.find_image_path(subject, None, frame_idx + 1, 0, train=False)
                         if img_path and os.path.exists(img_path):
                             subject_images_found += 1
@@ -159,15 +163,15 @@ class Dataset(torch.utils.data.Dataset):
                         else:
                             subject_images_missing += 1
                     
-                    print(f"  {subject}: {subject_images_found} images found, {subject_images_missing} missing (sampled {len(data_2d)//20} from {len(data_2d)} frames)")
+                    print(f"  {subject}: {subject_images_found} images found, {subject_images_missing} missing (sampled {len(data_2d)//frame_step} from {len(data_2d)} frames)")
                     total_images_found += subject_images_found
                     total_images_missing += subject_images_missing
         
         print(f"\n=== FINAL SUMMARY ===")
-        print(f"Total images found: {total_images_found}")
-        print(f"Total images missing: {total_images_missing}")
-        print(f"Total samples created: {len(samples)}")
-        print(f"Success rate: {total_images_found/(total_images_found+total_images_missing)*100:.1f}%" if (total_images_found+total_images_missing) > 0 else "No images checked")
+        print(f"🎯 Total images found: {total_images_found:,}")
+        print(f"❌ Total images missing: {total_images_missing:,}")
+        print(f"📊 Total samples created: {len(samples):,}")
+        print(f"✅ Success rate: {total_images_found/(total_images_found+total_images_missing)*100:.1f}%" if (total_images_found+total_images_missing) > 0 else "No images checked")
         
         if train:
             # Count subjects and sequences
@@ -178,9 +182,13 @@ class Dataset(torch.utils.data.Dataset):
                 subjects.add(sample['subject'])
                 sequences.add(sample['sequence'])
                 cameras.add(sample['camera'])
-            print(f"Subjects included: {sorted(subjects)}")
-            print(f"Sequences included: {sorted(sequences)}")
-            print(f"Cameras included: {sorted(cameras)}")
+            print(f"👥 Subjects included: {sorted(subjects)}")
+            print(f"🎬 Sequences included: {sorted(sequences)}")
+            print(f"📹 Cameras included: {sorted(cameras)}")
+            
+            # Estimate total potential frames
+            estimated_total_frames = total_images_found * (5 if train else 3)  # Multiply by frame_step
+            print(f"📈 Estimated total available frames: ~{estimated_total_frames:,}")
         
         return samples
 
