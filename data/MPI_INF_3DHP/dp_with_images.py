@@ -70,7 +70,7 @@ class Dataset(torch.utils.data.Dataset):
         if train:
             print("\n=== TRAINING DATA ANALYSIS ===")
             print("Processing ALL subjects (S1-S8) and ALL sequences (Seq1-Seq2)...")
-            print("🚀 MAXIMIZING TRAINING DATA - Using every 5th frame!")
+            print("🎯 TARGET: ~90,000 training samples - Using every 12th frame!")
             
             # Training data: {'S1 Seq1': [...], 'S2 Seq1': [...], ...}
             for subject_seq, seq_data in raw_data.items():
@@ -99,8 +99,8 @@ class Dataset(torch.utils.data.Dataset):
                                         camera_images_found = 0
                                         camera_images_missing = 0
                                         
-                                        # 🔥 MUCH MORE AGGRESSIVE SAMPLING: Every 5th frame instead of 50th!
-                                        frame_step = 5
+                                        # 🎯 OPTIMIZED SAMPLING: Every 12th frame to get ~90K samples
+                                        frame_step = 12
                                         for frame_idx in range(0, len(data_2d), frame_step):
                                             img_path = self.find_image_path(subject, sequence, frame_idx + 1, camera_idx, train=True)
                                             if img_path and os.path.exists(img_path):
@@ -132,7 +132,7 @@ class Dataset(torch.utils.data.Dataset):
         else:
             print("\n=== TEST DATA ANALYSIS ===")
             print("Processing ALL test subjects (TS1-TS6)...")
-            print("🚀 MAXIMIZING TEST DATA - Using every 3rd frame!")
+            print("🎯 TARGET: ~1,500 test samples - Using every 17th frame!")
             
             # Test data: {'TS1': {...}, 'TS2': {...}, ...} - Include all samples
             for subject, subject_data in raw_data.items():
@@ -145,8 +145,8 @@ class Dataset(torch.utils.data.Dataset):
                     subject_images_found = 0
                     subject_images_missing = 0
                     
-                    # 🔥 MORE AGGRESSIVE TEST SAMPLING: Every 3rd frame instead of 20th!
-                    frame_step = 3
+                    # 🎯 OPTIMIZED TEST SAMPLING: Every 17th frame to get ~1,500 samples
+                    frame_step = 17
                     for frame_idx in range(0, len(data_2d), frame_step):
                         img_path = self.find_image_path(subject, None, frame_idx + 1, 0, train=False)
                         if img_path and os.path.exists(img_path):
@@ -186,9 +186,10 @@ class Dataset(torch.utils.data.Dataset):
             print(f"🎬 Sequences included: {sorted(sequences)}")
             print(f"📹 Cameras included: {sorted(cameras)}")
             
-            # Estimate total potential frames
-            estimated_total_frames = total_images_found * (5 if train else 3)  # Multiply by frame_step
-            print(f"📈 Estimated total available frames: ~{estimated_total_frames:,}")
+            # Check if we're close to target
+            target_samples = 90000 if train else 1500
+            print(f"🎯 Target samples: {target_samples:,}")
+            print(f"📈 Achievement: {len(samples)/target_samples*100:.1f}% of target")
         
         return samples
 
