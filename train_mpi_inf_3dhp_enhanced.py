@@ -10,10 +10,8 @@ import argparse
 import os
 import time
 
-# Import your existing components
-import ref
+# Import your existing components (remove ref import)
 from utils.utils import adjust_learning_rate
-from utils.eval import Evaluation
 
 def calculate_mpjpe_pixels(pred_heatmaps, gt_heatmaps, input_res=256):
     """
