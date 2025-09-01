@@ -9,7 +9,6 @@ import numpy as np
 import argparse
 import os
 import time
-from torch.utils.tensorboard import SummaryWriter
 
 # Import your existing components
 import ref
@@ -57,7 +56,7 @@ def calculate_mpjpe_pixels(pred_heatmaps, gt_heatmaps, input_res=256):
     
     return mpjpe
 
-def train_epoch(model, train_loader, optimizer, criterion, device, epoch, writer=None):
+def train_epoch(model, train_loader, optimizer, criterion, device, epoch):
     """Train for one epoch"""
     model.train()
     running_loss = 0.0
@@ -107,14 +106,9 @@ def train_epoch(model, train_loader, optimizer, criterion, device, epoch, writer
     print(f"   Avg Loss: {avg_loss:.4f}")
     print(f"   Avg MPJPE: {avg_mpjpe:.2f} pixels")
     
-    # Log to tensorboard
-    if writer:
-        writer.add_scalar('Train/Loss', avg_loss, epoch)
-        writer.add_scalar('Train/MPJPE_pixels', avg_mpjpe, epoch)
-    
     return avg_loss, avg_mpjpe
 
-def validate_epoch(model, val_loader, criterion, device, epoch, writer=None):
+def validate_epoch(model, val_loader, criterion, device, epoch):
     """Validate for one epoch"""
     model.eval()
     running_loss = 0.0
@@ -154,11 +148,6 @@ def validate_epoch(model, val_loader, criterion, device, epoch, writer=None):
     print(f"   Avg Loss: {avg_loss:.4f}")
     print(f"   Avg MPJPE: {avg_mpjpe:.2f} pixels")
     
-    # Log to tensorboard
-    if writer:
-        writer.add_scalar('Val/Loss', avg_loss, epoch)
-        writer.add_scalar('Val/MPJPE_pixels', avg_mpjpe, epoch)
-    
     return avg_loss, avg_mpjpe
 
 def main():
@@ -185,9 +174,6 @@ def main():
     # Create experiment directory
     exp_dir = os.path.join('exp', args.exp)
     os.makedirs(exp_dir, exist_ok=True)
-    
-    # Set up tensorboard
-    writer = SummaryWriter(os.path.join(exp_dir, 'logs'))
     
     # Import task configuration
     try:
@@ -251,7 +237,7 @@ def main():
     # Evaluation only
     if args.eval_only:
         print("\n🔍 Evaluation only mode")
-        val_loss, val_mpjpe = validate_epoch(model, val_loader, criterion, device, start_epoch, writer)
+        val_loss, val_mpjpe = validate_epoch(model, val_loader, criterion, device, start_epoch)
         return
     
     # Training loop
@@ -267,10 +253,10 @@ def main():
         print(f"Learning rate: {lr}")
         
         # Train
-        train_loss, train_mpjpe = train_epoch(model, train_loader, optimizer, criterion, device, epoch + 1, writer)
+        train_loss, train_mpjpe = train_epoch(model, train_loader, optimizer, criterion, device, epoch + 1)
         
         # Validate
-        val_loss, val_mpjpe = validate_epoch(model, val_loader, criterion, device, epoch + 1, writer)
+        val_loss, val_mpjpe = validate_epoch(model, val_loader, criterion, device, epoch + 1)
         
         # Save checkpoint
         is_best = val_mpjpe < best_mpjpe
@@ -307,8 +293,6 @@ def main():
     
     print(f"\n🎉 Training completed!")
     print(f"Best MPJPE achieved: {best_mpjpe:.2f} pixels")
-    
-    writer.close()
 
 if __name__ == '__main__':
     main()
