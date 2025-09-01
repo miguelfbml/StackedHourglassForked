@@ -1,23 +1,10 @@
 import torch
 import torch.utils.data
 import numpy as np
-import ref
-from h5py import File
 import cv2
 from imageio import imread
 import os
-
-def preprocess_image(img):
-    """Simple image preprocessing - color augmentation"""
-    if np.random.random() > 0.5:
-        # Brightness adjustment
-        img = np.clip(img * (0.8 + 0.4 * np.random.random()), 0, 255).astype(np.uint8)
-    
-    if np.random.random() > 0.5:
-        # Contrast adjustment
-        img = np.clip((img - 128) * (0.8 + 0.4 * np.random.random()) + 128, 0, 255).astype(np.uint8)
-    
-    return img
+import ref
 
 class GenerateHeatmap():
     def __init__(self, output_res, num_parts):
@@ -51,26 +38,99 @@ class GenerateHeatmap():
 
 class Dataset(torch.utils.data.Dataset):
     def __init__(self, config, train=True, data_root="data/motion3d", mpi_dataset_root="/nas-ctm01/datasets/public/mpi_inf_3dhp"):
-        print(f"Initializing Dataset: train={train}, data_root={data_root}, mpi_dataset_root={mpi_dataset_root}")
+        print(f"Initializing MPI-INF-3DHP Dataset: train={train}")
         
-        self.config = config
+        self.input_res = config['train']['input_res']
+        self.output_res = config['train']['output_res']
+        self.generateHeatmap = GenerateHeatmap(self.output_res, 17)
         self.train = train
-        self.data_root = data_root
         self.mpi_dataset_root = mpi_dataset_root
         
-        self.img_res = config['train']['input_res']
-        self.output_res = config['train']['output_res']
-        self.sigma = config['train']['sigma']
-        self.scale_factor = config['train']['scale_factor']
-        self.rot_factor = config['train']['rot_factor']
-        self.label_type = config['train']['label_type']
+        # Load annotations
+        self.samples = self.load_annotations(data_root, train)
+        print(f"Loaded {len(self.samples)} samples")
+
+    def load_annotations(self, data_root, train):
+        """Load MPI-INF-3DHP annotations"""
+        if train:
+            data_file = os.path.join(data_root, 'data_train_3dhp.npz')
+        else:
+            data_file = os.path.join(data_root, 'data_test_3dhp.npz')
         
-        # Load motion3d data and create sample list
-        self.samples = self.load_mpi_inf_3dhp_data(data_root, train)
-        print(f"Dataset loaded: {len(self.samples)} samples")
+        if not os.path.exists(data_file):
+            raise FileNotFoundError(f"Data file not found: {data_file}")
         
-        # Generate heatmaps
-        self.generateHeatmap = GenerateHeatmap(self.output_res, 17)
+        print(f"Loading annotations from: {data_file}")
+        npz_data = np.load(data_file, allow_pickle=True)
+        raw_data = npz_data['data'].item()
+        
+        samples = []
+        
+        if train:
+            # Training data: {'S1 Seq1': [...], 'S2 Seq1': [...], ...}
+            for subject_seq, seq_data in raw_data.items():
+                parts = subject_seq.split(' ')
+                subject = parts[0]  # 'S1'
+                sequence = parts[1]  # 'Seq1'
+                
+                for camera_dict in seq_data:
+                    for camera_str, camera_data in camera_dict.items():
+                        camera_idx = int(camera_str)
+                        
+                        if 'data_2d' in camera_data and 'data_3d' in camera_data:
+                            data_2d = camera_data['data_2d']
+                            data_3d = camera_data['data_3d']
+                            
+                            # Sample every 10th frame to reduce dataset size
+                            for frame_idx in range(0, len(data_2d), 10):
+                                # Find corresponding image
+                                img_path = self.find_image_path(subject, sequence, frame_idx + 1, camera_idx, train=True)
+                                if img_path and os.path.exists(img_path):
+                                    samples.append({
+                                        'img_path': img_path,
+                                        'joint_2d': data_2d[frame_idx],
+                                        'joint_3d': data_3d[frame_idx],
+                                        'subject': subject,
+                                        'sequence': sequence,
+                                        'frame_idx': frame_idx + 1,
+                                        'camera': camera_idx
+                                    })
+        else:
+            # Test data: {'TS1': {...}, 'TS2': {...}, ...}
+            for subject, subject_data in raw_data.items():
+                if 'data_2d' in subject_data and 'data_3d' in subject_data:
+                    data_2d = subject_data['data_2d']
+                    data_3d = subject_data['data_3d']
+                    
+                    # Sample every 20th frame for test
+                    for frame_idx in range(0, len(data_2d), 20):
+                        img_path = self.find_image_path(subject, None, frame_idx + 1, 0, train=False)
+                        if img_path and os.path.exists(img_path):
+                            samples.append({
+                                'img_path': img_path,
+                                'joint_2d': data_2d[frame_idx],
+                                'joint_3d': data_3d[frame_idx],
+                                'subject': subject,
+                                'sequence': 'test',
+                                'frame_idx': frame_idx + 1,
+                                'camera': 0
+                            })
+        
+        return samples
+
+    def find_image_path(self, subject, sequence, frame_idx, camera_idx, train=True):
+        """Find the actual image file path"""
+        if train:
+            # Training: S1/Seq1/imageSequence/video_0/frame_000001.jpg
+            base_path = os.path.join(self.mpi_dataset_root, subject, sequence, "imageSequence", f"video_{camera_idx}")
+            img_name = f"frame_{frame_idx:06d}.jpg"
+        else:
+            # Test: mpi_inf_3dhp_test_set/TS1/imageSequence/img_000001.jpg
+            base_path = os.path.join(self.mpi_dataset_root, "mpi_inf_3dhp_test_set", subject, "imageSequence")
+            img_name = f"img_{frame_idx:06d}.jpg"
+        
+        img_path = os.path.join(base_path, img_name)
+        return img_path if os.path.exists(img_path) else None
 
     def __len__(self):
         return len(self.samples)
@@ -79,268 +139,91 @@ class Dataset(torch.utils.data.Dataset):
         try:
             sample = self.samples[idx]
             
-            # Extract data from sample
-            joint_2d = sample['joint_2d'].copy()  # Shape: (17, 2) or (17, 3)
-            joint_3d = sample['joint_3d'].copy()  # Shape: (17, 3)
-            subject = sample['subject']
-            sequence = sample['sequence']
-            frame_idx = sample['frame_idx']
-            camera_idx = sample.get('camera', 0)
+            # Load image
+            img = imread(sample['img_path'])
+            if len(img.shape) == 2:
+                img = np.stack([img, img, img], axis=2)
             
-            # Ensure joint_2d has visibility information
-            if joint_2d.shape[1] == 2:
-                # Add visibility channel (assume all visible)
-                visibility = np.ones((joint_2d.shape[0], 1))
-                joint_2d = np.concatenate([joint_2d, visibility], axis=1)
+            # Get 2D keypoints
+            joint_2d = sample['joint_2d'].copy()  # Shape: (17, 2)
             
-            # Generate image path and load image
-            img_path = self.generate_image_path(subject, sequence, frame_idx, camera_idx)
-            img = self.load_image_from_path(img_path)
+            # Resize image to input resolution
+            original_h, original_w = img.shape[:2]
+            img_resized = cv2.resize(img, (self.input_res, self.input_res))
             
-            # Apply preprocessing
-            inp, out = self.preprocess(img, joint_2d, joint_3d, camera_idx)
+            # Scale keypoints to match resized image
+            scale_x = self.input_res / original_w
+            scale_y = self.input_res / original_h
+            
+            joint_2d_scaled = joint_2d.copy()
+            joint_2d_scaled[:, 0] *= scale_x
+            joint_2d_scaled[:, 1] *= scale_y
+            
+            # Add visibility (assume all visible)
+            joint_2d_vis = np.ones((17, 3))
+            joint_2d_vis[:, :2] = joint_2d_scaled
+            
+            # Apply random augmentation for training
+            if self.train and np.random.random() > 0.5:
+                # Random horizontal flip
+                img_resized = img_resized[:, ::-1, :]
+                joint_2d_vis[:, 0] = self.input_res - joint_2d_vis[:, 0]
+                
+                # Swap left-right keypoints for MPI-INF-3DHP
+                left_right_pairs = [(3, 6), (4, 7), (5, 8), (9, 12), (10, 13), (11, 14)]
+                for left_idx, right_idx in left_right_pairs:
+                    joint_2d_vis[[left_idx, right_idx]] = joint_2d_vis[[right_idx, left_idx]]
+            
+            # Scale keypoints to output resolution for heatmap generation
+            joint_2d_heatmap = joint_2d_vis.copy()
+            joint_2d_heatmap[:, 0] *= (self.output_res / self.input_res)
+            joint_2d_heatmap[:, 1] *= (self.output_res / self.input_res)
+            
+            # Generate heatmaps
+            heatmaps = self.generateHeatmap(joint_2d_heatmap)
+            
+            # Convert to tensors
+            inp = img_resized.astype(np.float32) / 255.0
+            inp = torch.from_numpy(inp).permute(2, 0, 1)  # HWC to CHW
+            out = torch.from_numpy(heatmaps)
             
             return {
                 'imgs': inp,
-                'heatmaps': out,
-                'joint_2d': joint_2d.astype(np.float32),
-                'joint_3d': joint_3d.astype(np.float32),
-                'imgname': img_path,
-                'camera': camera_idx,
-                'subject': subject,
-                'sequence': sequence,
-                'frame_idx': frame_idx
+                'heatmaps': out
             }
             
         except Exception as e:
             print(f"Error loading sample {idx}: {e}")
-            # Return a fallback sample
-            return self.get_fallback_sample(idx)
-
-    def get_fallback_sample(self, idx):
-        """Create a fallback sample when real data fails to load"""
-        # Create synthetic image
-        img = np.random.randint(0, 256, (256, 256, 3), dtype=np.uint8)
-        
-        # Create random valid 2D joints
-        joint_2d = np.random.rand(17, 3) * 256
-        joint_2d[:, 2] = 1.0  # Set all as visible
-        
-        # Create random 3D joints
-        joint_3d = np.random.randn(17, 3) * 1000
-        
-        inp, out = self.preprocess(img, joint_2d, joint_3d, 0)
-        
-        return {
-            'imgs': inp,
-            'heatmaps': out,
-            'joint_2d': joint_2d.astype(np.float32),
-            'joint_3d': joint_3d.astype(np.float32),
-            'imgname': f'synthetic_{idx}',
-            'camera': 0,
-            'subject': 'synthetic',
-            'sequence': 'synthetic',
-            'frame_idx': idx
-        }
-
-    def generate_image_path(self, subject, sequence, frame_idx, camera_idx):
-        """Generate image path based on MPI-INF-3DHP structure"""
-        
-        if self.train:
-            # Training data: S1, S2, etc.
-            # Expected structure: S1/Seq1/imageSequence/video_0/frame_000001.jpg
-            img_filename = f"frame_{frame_idx:06d}.jpg"
-            img_path = os.path.join(subject, sequence, "imageSequence", f"video_{camera_idx}", img_filename)
-        else:
-            # Test data: TS1, TS2, etc.
-            # Expected structure: TS1/imageSequence/img_000001.jpg
-            img_filename = f"img_{frame_idx:06d}.jpg"
-            img_path = os.path.join(subject, "imageSequence", img_filename)
-        
-        return img_path
-
-    def load_image_from_path(self, img_path):
-        """Load image from MPI-INF-3DHP dataset structure"""
-        
-        # Different possible root paths
-        if self.train:
-            # Training images are in the main dataset
-            possible_roots = [
-                self.mpi_dataset_root,
-            ]
-        else:
-            # Test images are in the test set
-            possible_roots = [
-                os.path.join(self.mpi_dataset_root, "mpi_inf_3dhp_test_set"),
-            ]
-        
-        # Try to find the image
-        for root in possible_roots:
-            full_path = os.path.join(root, img_path)
-            if os.path.exists(full_path):
-                try:
-                    img = imread(full_path)
-                    if len(img.shape) == 3:
-                        return img
-                except Exception as e:
-                    print(f"Error reading image {full_path}: {e}")
-                    continue
-        
-        # If no image found, create synthetic
-        print(f"Creating synthetic image for {img_path}")
-        return np.random.randint(0, 256, (256, 256, 3), dtype=np.uint8)
-
-    def apply_augmentation(self, img, keypoints_2d):
-        """Apply data augmentation"""
-        if not self.train:
-            return img, keypoints_2d
-        
-        # Random horizontal flip
-        if np.random.random() > 0.5:
-            img = img[:, ::-1, :]
-            keypoints_2d = keypoints_2d.copy()
-            keypoints_2d[:, 0] = img.shape[1] - keypoints_2d[:, 0]
-            
-            # Swap left-right keypoints for MPI-INF-3DHP (17 keypoints)
-            left_right_pairs = [(3, 6), (4, 7), (5, 8), (9, 12), (10, 13), (11, 14)]
-            for left_idx, right_idx in left_right_pairs:
-                keypoints_2d[[left_idx, right_idx]] = keypoints_2d[[right_idx, left_idx]]
-        
-        return img, keypoints_2d
-
-    def preprocess(self, img, joint_2d, joint_3d, camera_idx):
-        """Preprocess image and joints"""
-        
-        # Resize image to input resolution
-        img_resized = cv2.resize(img, (self.img_res, self.img_res))
-        
-        # Scale 2D joints to match resized image
-        original_h, original_w = img.shape[:2]
-        scale_x = self.img_res / original_w
-        scale_y = self.img_res / original_h
-        
-        joint_2d_scaled = joint_2d.copy()
-        joint_2d_scaled[:, 0] *= scale_x
-        joint_2d_scaled[:, 1] *= scale_y
-        
-        # Apply augmentation
-        img_aug, joint_2d_aug = self.apply_augmentation(img_resized, joint_2d_scaled)
-        
-        # Scale 2D joints to output resolution for heatmap generation
-        joint_2d_heatmap = joint_2d_aug.copy()
-        joint_2d_heatmap[:, 0] *= (self.output_res / self.img_res)
-        joint_2d_heatmap[:, 1] *= (self.output_res / self.img_res)
-        
-        # Generate heatmaps
-        heatmaps = self.generateHeatmap(joint_2d_heatmap)
-        
-        # Convert image to tensor format
-        inp = img_aug.astype(np.float32) / 255.0
-        inp = torch.from_numpy(inp).permute(2, 0, 1)  # HWC to CHW
-        
-        # Convert heatmaps to tensor
-        out = torch.from_numpy(heatmaps)
-        
-        return inp, out
-
-    def load_mpi_inf_3dhp_data(self, data_root, train=True):
-        """Load MPI-INF-3DHP motion3d data and create sample list"""
-        
-        if train:
-            data_file = os.path.join(data_root, 'data_train_3dhp.npz')
-        else:
-            data_file = os.path.join(data_root, 'data_test_3dhp.npz')
-        
-        print(f"Loading data from: {data_file}")
-        
-        if not os.path.exists(data_file):
-            raise FileNotFoundError(f"Data file not found: {data_file}")
-        
-        # Load the .npz file
-        npz_data = np.load(data_file, allow_pickle=True)
-        raw_data = npz_data['data'].item()  # Extract dictionary from object array
-        
-        print(f"Data keys: {list(raw_data.keys())}")
-        
-        samples = []
-        
-        if train:
-            # Training data structure: {'S1 Seq1': [...], 'S1 Seq2': [...], ...}
-            for subject_seq, seq_data in raw_data.items():
-                # Parse subject and sequence
-                parts = subject_seq.split(' ')
-                subject = parts[0]  # 'S1'
-                sequence = parts[1]  # 'Seq1'
-                
-                # seq_data is a list of dictionaries, each with camera data
-                for camera_dict in seq_data:
-                    for camera_str, camera_data in camera_dict.items():
-                        camera_idx = int(camera_str)
-                        
-                        # Extract 2D and 3D joint data
-                        if 'data_2d' in camera_data and 'data_3d' in camera_data:
-                            data_2d = camera_data['data_2d']  # Shape: (n_frames, 17, 2)
-                            data_3d = camera_data['data_3d']  # Shape: (n_frames, 17, 3)
-                            
-                            # Create samples for each frame (sample every 5th frame for training)
-                            for frame_idx in range(0, len(data_2d), 5):
-                                samples.append({
-                                    'joint_2d': data_2d[frame_idx],
-                                    'joint_3d': data_3d[frame_idx], 
-                                    'subject': subject,
-                                    'sequence': sequence,
-                                    'frame_idx': frame_idx + 1,  # 1-indexed
-                                    'camera': camera_idx
-                                })
-        else:
-            # Test data structure: {'TS1': {...}, 'TS2': {...}, ...}
-            for subject, subject_data in raw_data.items():
-                if 'data_2d' in subject_data and 'data_3d' in subject_data:
-                    data_2d = subject_data['data_2d']  # Shape: (n_frames, 17, 2)
-                    data_3d = subject_data['data_3d']  # Shape: (n_frames, 17, 3)
-                    
-                    # Create samples for each frame (sample every 10th frame for test)
-                    for frame_idx in range(0, len(data_2d), 10):
-                        samples.append({
-                            'joint_2d': data_2d[frame_idx],
-                            'joint_3d': data_3d[frame_idx],
-                            'subject': subject,
-                            'sequence': 'test',
-                            'frame_idx': frame_idx + 1,  # 1-indexed
-                            'camera': 0  # Default camera for test
-                        })
-        
-        print(f"Created {len(samples)} samples")
-        return samples
+            # Return a synthetic sample as fallback
+            synthetic_img = torch.randn(3, self.input_res, self.input_res)
+            synthetic_heatmaps = torch.zeros(17, self.output_res, self.output_res)
+            return {
+                'imgs': synthetic_img,
+                'heatmaps': synthetic_heatmaps
+            }
 
 def custom_collate_fn(batch):
-    """Custom collate function to handle dictionary format from Dataset.__getitem__"""
-    if isinstance(batch[0], dict):
-        # Handle dictionary format
-        collated = {}
-        for key in batch[0].keys():
-            if key in ['imgs', 'heatmaps']:
-                collated[key] = torch.stack([item[key] for item in batch])
-            else:
-                collated[key] = [item[key] for item in batch]
-        return collated
-    else:
-        # Handle tuple/list format (fallback)
-        return torch.utils.data.dataloader.default_collate(batch)
+    """Custom collate function for batch processing"""
+    imgs = torch.stack([item['imgs'] for item in batch])
+    heatmaps = torch.stack([item['heatmaps'] for item in batch])
+    return {
+        'imgs': imgs,
+        'heatmaps': heatmaps
+    }
 
 def init(config):
+    """Initialize data loaders"""
     batchsize = config['train']['batchsize']
     data_root = config.get('data_root', 'data/motion3d')
     mpi_dataset_root = config.get('mpi_dataset_root', '/nas-ctm01/datasets/public/mpi_inf_3dhp')
     
-    print(f"Initializing data loaders with batch_size={batchsize}")
+    print(f"Initializing MPI-INF-3DHP data loaders")
     print(f"Data root: {data_root}")
     print(f"MPI dataset root: {mpi_dataset_root}")
     
     train_dataset = Dataset(config, train=True, data_root=data_root, mpi_dataset_root=mpi_dataset_root)
-    # Use test data for validation (same as TCPFormer approach)
     valid_dataset = Dataset(config, train=False, data_root=data_root, mpi_dataset_root=mpi_dataset_root)
-    test_dataset = Dataset(config, train=False, data_root=data_root, mpi_dataset_root=mpi_dataset_root)  # Same as valid
+    test_dataset = Dataset(config, train=False, data_root=data_root, mpi_dataset_root=mpi_dataset_root)
     
     train_loader = torch.utils.data.DataLoader(
         train_dataset, batch_size=batchsize, shuffle=True, 

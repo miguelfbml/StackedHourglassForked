@@ -1,308 +1,127 @@
 #!/usr/bin/env python3
 """
-Training script for StackedHourglass model on MPI-INF-3DHP dataset
-Modified to work with 17 keypoints instead of 16
+Training script for MPI-INF-3DHP dataset
 """
 
 import os
-import tqdm
-from os.path import dirname
-
-import torch.backends.cudnn as cudnn
-cudnn.benchmark = True
-cudnn.enabled = True
-
 import torch
 import importlib
 import argparse
-from datetime import datetime
-from pytz import timezone
-import shutil
+from tqdm import tqdm
 
-def parse_command_line():
+def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('-c', '--continue_exp', type=str, help='continue exp')
-    parser.add_argument('-e', '--exp', type=str, default='mpi_inf_3dhp_stacked_hourglass', help='experiment name')
-    parser.add_argument('-m', '--max_iters', type=int, default=500, help='max number of iterations (thousands)')
-    parser.add_argument('--data_root', type=str, default='data/motion3d', help='path to motion3d data')
-    parser.add_argument('--mpi_dataset_root', type=str, default='/nas-ctm01/datasets/public/mpi_inf_3dhp', help='path to MPI-INF-3DHP images')
-    args = parser.parse_args()
-    return args
-
-def reload(config):
-    """
-    Load or initialize model's parameters by config from config['opt'].continue_exp
-    config['train']['epoch'] records the epoch num
-    config['inference']['net'] is the model
-    """
-    opt = config['opt']
-
-    if opt.continue_exp:
-        resume = os.path.join('exp', opt.continue_exp)
-        resume_file = os.path.join(resume, 'checkpoint.pt')
-        if os.path.isfile(resume_file):
-            print("=> loading checkpoint '{}'".format(resume))
-            checkpoint = torch.load(resume_file)
-
-            config['inference']['net'].load_state_dict(checkpoint['state_dict'])
-            config['train']['optimizer'].load_state_dict(checkpoint['optimizer'])
-            config['train']['epoch'] = checkpoint['epoch']
-            print("=> loaded checkpoint '{}' (epoch {})"
-                  .format(resume, checkpoint['epoch']))
-        else:
-            print("=> no checkpoint found at '{}'".format(resume))
-            exit(0)
-
-    if 'epoch' not in config['train']:
-        config['train']['epoch'] = 0
-
-def save_checkpoint(config):
-    """Save current model state"""
-    exp_path = os.path.join('exp', config['opt'].exp)
-    checkpoint_path = os.path.join(exp_path, 'checkpoint.pt')
-    
-    torch.save({
-        'epoch': config['train']['epoch'],
-        'state_dict': config['inference']['net'].state_dict(),
-        'optimizer': config['train']['optimizer'].state_dict(),
-    }, checkpoint_path)
-    print(f"Checkpoint saved to {checkpoint_path}")
+    parser.add_argument('--exp', type=str, default='mpi_inf_3dhp', help='experiment name')
+    parser.add_argument('--max_iters', type=int, default=1000, help='max iterations')
+    parser.add_argument('--data_root', type=str, default='data/motion3d', help='data root')
+    parser.add_argument('--mpi_dataset_root', type=str, default='/nas-ctm01/datasets/public/mpi_inf_3dhp', help='MPI dataset root')
+    return parser.parse_args()
 
 def main():
-    # Parse arguments
-    opt = parse_command_line()
-    print(f"[DEBUG] Starting training with arguments: {opt}")
+    args = parse_args()
     
-    # Update paths in config
-    os.environ['DATA_ROOT'] = opt.data_root
-    os.environ['MPI_DATASET_ROOT'] = opt.mpi_dataset_root
-    print(f"[DEBUG] Environment variables set")
+    print(f"Starting MPI-INF-3DHP training...")
+    print(f"Experiment: {args.exp}")
+    print(f"Max iterations: {args.max_iters}")
+    print(f"Data root: {args.data_root}")
+    print(f"MPI dataset root: {args.mpi_dataset_root}")
     
-    # Import the task configuration for MPI-INF-3DHP
-    print(f"[DEBUG] Importing task module...")
+    # Import task
     task = importlib.import_module('task.pose_mpi_inf_3dhp_with_images')
-    print(f"[DEBUG] Task module imported successfully")
+    config = task.__config__.copy()
     
-    # Add opt to config before calling make_network
-    task.__config__['opt'] = opt
-    task.__config__['data_root'] = opt.data_root
-    task.__config__['mpi_dataset_root'] = opt.mpi_dataset_root
+    # Update config
+    config['data_root'] = args.data_root
+    config['mpi_dataset_root'] = args.mpi_dataset_root
     
-    print(f"[DEBUG] Creating network...")
-    exp = task.make_network(task.__config__)
-    print(f"[DEBUG] Network created successfully")
+    # Add args to config
+    setattr(config, 'opt', args)
     
-    # Update config with command line arguments (redundant but safe)
-    exp['opt'] = opt
-    exp['data_root'] = opt.data_root
-    exp['mpi_dataset_root'] = opt.mpi_dataset_root
-    
-    # Create experiment directory
-    exp_path = os.path.join('exp', opt.exp)
-    if not os.path.exists(exp_path):
-        os.makedirs(exp_path)
-        print(f"Created experiment directory: {exp_path}")
-    
-    # Load or initialize model
-    print(f"[DEBUG] Loading/initializing model...")
-    reload(exp)
-    print(f"[DEBUG] Model loaded successfully")
+    # Create network
+    print("Creating network...")
+    exp = task.make_network(config)
     
     # Import data provider
-    print(f"[DEBUG] Importing data provider...")
     data_func = importlib.import_module(exp['data_provider'])
-    print(f"[DEBUG] Data provider imported successfully")
     
-    print("Setting up datasets...")
-    print(f"Data root: {opt.data_root}")
-    print(f"MPI dataset root: {opt.mpi_dataset_root}")
+    # Create datasets
+    print("Creating datasets...")
+    train_dataset = data_func.Dataset(exp, train=True, 
+                                    data_root=args.data_root,
+                                    mpi_dataset_root=args.mpi_dataset_root)
     
-    # Create training dataset
-    print(f"[DEBUG] Creating training dataset...")
-    try:
-        train_dataset = data_func.Dataset(exp, train=True, 
-                                        data_root=opt.data_root,
-                                        mpi_dataset_root=opt.mpi_dataset_root)
-        print(f"✓ Training dataset size: {len(train_dataset)}")
-    except Exception as e:
-        print(f"✗ Error creating training dataset: {e}")
-        import traceback
-        traceback.print_exc()
-        return
+    val_dataset = data_func.Dataset(exp, train=False,
+                                  data_root=args.data_root,
+                                  mpi_dataset_root=args.mpi_dataset_root)
     
-    # Create validation dataset  
-    print(f"[DEBUG] Creating validation dataset...")
-    try:
-        val_dataset = data_func.Dataset(exp, train=False,
-                                      data_root=opt.data_root, 
-                                      mpi_dataset_root=opt.mpi_dataset_root)
-        print(f"✓ Validation dataset size: {len(val_dataset)}")
-    except Exception as e:
-        print(f"✗ Error creating validation dataset: {e}")
-        import traceback
-        traceback.print_exc()
-        return
+    print(f"Training samples: {len(train_dataset)}")
+    print(f"Validation samples: {len(val_dataset)}")
     
     # Create data loaders
-    print(f"[DEBUG] Creating data loaders...")
-    try:
-        train_loader = torch.utils.data.DataLoader(
-            train_dataset, 
-            batch_size=exp['train']['batchsize'],
-            shuffle=True,
-            num_workers=0,  # Disable multiprocessing for debugging
-            pin_memory=False,  # Disable pin_memory for debugging
-            collate_fn=data_func.custom_collate_fn
-        )
-        print(f"✓ Training loader created")
-        
-        val_loader = torch.utils.data.DataLoader(
-            val_dataset,
-            batch_size=exp['train']['batchsize'],
-            shuffle=False, 
-            num_workers=0,  # Disable multiprocessing for debugging
-            pin_memory=False,  # Disable pin_memory for debugging
-            collate_fn=data_func.custom_collate_fn
-        )
-        print(f"✓ Validation loader created")
-    except Exception as e:
-        print(f"✗ Error creating data loaders: {e}")
-        import traceback
-        traceback.print_exc()
-        return
+    train_loader = torch.utils.data.DataLoader(
+        train_dataset, batch_size=exp['train']['batchsize'], 
+        shuffle=True, num_workers=0, collate_fn=data_func.custom_collate_fn
+    )
     
-    print(f"Training batches: {len(train_loader)}")
-    print(f"Validation batches: {len(val_loader)}")
-    
-    # Test loading a single batch
-    print(f"[DEBUG] Testing data loading...")
-    try:
-        test_batch = next(iter(train_loader))
-        print(f"✓ Successfully loaded test batch")
-        if isinstance(test_batch, dict):
-            print(f"  - Images shape: {test_batch['imgs'].shape}")
-            print(f"  - Heatmaps shape: {test_batch['heatmaps'].shape}")
-        else:
-            print(f"  - Unexpected batch format: {type(test_batch)}")
-    except Exception as e:
-        print(f"✗ Error loading test batch: {e}")
-        import traceback
-        traceback.print_exc()
-        return
+    val_loader = torch.utils.data.DataLoader(
+        val_dataset, batch_size=exp['train']['batchsize'], 
+        shuffle=False, num_workers=0, collate_fn=data_func.custom_collate_fn
+    )
     
     # Training loop
     print("Starting training...")
-    print(f"Target iterations: {opt.max_iters * 1000}")
-    print(f"Model configuration: {exp['inference']['nstack']} stacks, {exp['inference']['oup_dim']} keypoints")
-    
-    max_iterations = opt.max_iters * 1000
-    current_iter = exp['train']['epoch'] * len(train_loader)
-    
-    # Loss tracking
-    epoch_losses = []
-    best_val_loss = float('inf')
-    
-    # Set model to training mode
     exp['inference']['net'].train()
     
-    while current_iter < max_iterations:
-        epoch = current_iter // len(train_loader)
-        exp['train']['epoch'] = epoch
+    current_iter = 0
+    
+    for epoch in range(100):  # Large number to ensure we reach max_iters
+        print(f"Epoch {epoch}")
         
-        print(f"\nEpoch {epoch} (iteration {current_iter}/{max_iterations})")
-        
-        # Training phase
-        exp['inference']['net'].train()
-        epoch_loss_sum = 0.0
-        epoch_batches = 0
-        
-        for batch_idx, batch_data in enumerate(tqdm.tqdm(train_loader, desc=f"Training epoch {epoch}")):
-            current_iter += 1
+        for batch_idx, batch_data in enumerate(tqdm(train_loader, desc=f"Training Epoch {epoch}")):
+            if current_iter >= args.max_iters:
+                break
             
-            # Prepare batch data
-            if isinstance(batch_data, dict):
-                imgs, heatmaps = batch_data['imgs'], batch_data['heatmaps']
-            else:
-                # Legacy format
-                imgs, heatmaps = batch_data
+            # Train step
+            result = exp['func'](current_iter, exp, 'train', **batch_data)
             
-            # Move to GPU if available
-            device = next(exp['inference']['net'].parameters()).device
-            batch_input = {
-                'imgs': imgs.to(device),
-                'heatmaps': heatmaps.to(device)
-            }
-            
-            # Train step and capture loss
-            train_result = exp['func'](current_iter, exp, 'train', **batch_input)
-            
-            # Track batch loss (extract from the printed output or return value)
-            epoch_batches += 1
-            
-            # Validation every valid_iters iterations
-            if current_iter % exp['train']['valid_iters'] == 0:
+            # Validation every 100 iterations
+            if current_iter % 100 == 0 and current_iter > 0:
                 print(f"\nRunning validation at iteration {current_iter}")
                 exp['inference']['net'].eval()
-                
-                val_loss_sum = 0.0
-                val_batches = 0
-                
                 with torch.no_grad():
-                    for val_batch_idx, val_batch_data in enumerate(tqdm.tqdm(val_loader, desc="Validation")):
-                        if val_batch_idx >= exp['inference']['num_eval'] // exp['train']['batchsize']:
+                    for val_idx, val_batch in enumerate(val_loader):
+                        if val_idx >= 10:  # Only validate on first 10 batches
                             break
-                            
-                        if isinstance(val_batch_data, dict):
-                            val_imgs, val_heatmaps = val_batch_data['imgs'], val_batch_data['heatmaps']
-                        else:
-                            val_imgs, val_heatmaps = val_batch_data
-                            
-                        val_batch_input = {
-                            'imgs': val_imgs.to(device),
-                            'heatmaps': val_heatmaps.to(device)
-                        }
-                        
-                        val_result = exp['func'](f"val_{current_iter}_{val_batch_idx}", exp, 'valid', **val_batch_input)
-                        val_batches += 1
-                
-                # Calculate average validation loss
-                avg_val_loss = val_loss_sum / max(val_batches, 1)
-                
-                # Check if model is improving
-                if avg_val_loss < best_val_loss:
-                    best_val_loss = avg_val_loss
-                    print(f"✓ New best validation loss: {best_val_loss:.6f}")
-                    # Save best model
-                    exp_path = os.path.join('exp', exp['opt'].exp)
-                    best_model_path = os.path.join(exp_path, 'best_model.pt')
-                    torch.save({
-                        'epoch': epoch,
-                        'iteration': current_iter,
-                        'state_dict': exp['inference']['net'].state_dict(),
-                        'optimizer': exp['train']['optimizer'].state_dict(),
-                        'best_val_loss': best_val_loss,
-                    }, best_model_path)
-                else:
-                    print(f"Validation loss: {avg_val_loss:.6f} (best: {best_val_loss:.6f})")
-                
+                        exp['func'](f"val_{current_iter}_{val_idx}", exp, 'valid', **val_batch)
                 exp['inference']['net'].train()
             
-            # Save checkpoint every 10000 iterations
-            if current_iter % 10000 == 0:
-                save_checkpoint(exp)
+            # Save checkpoint every 1000 iterations
+            if current_iter % 1000 == 0 and current_iter > 0:
+                exp_path = os.path.join('exp', args.exp)
+                checkpoint_path = os.path.join(exp_path, f'checkpoint_{current_iter}.pt')
+                torch.save({
+                    'iteration': current_iter,
+                    'state_dict': exp['inference']['net'].state_dict(),
+                    'optimizer': exp['train']['optimizer'].state_dict(),
+                }, checkpoint_path)
+                print(f"Checkpoint saved: {checkpoint_path}")
             
-            # Learning rate decay
-            if current_iter % exp['train']['decay_iters'] == 0 and current_iter > 0:
-                for param_group in exp['train']['optimizer'].param_groups:
-                    param_group['lr'] = exp['train']['decay_lr']
-                print(f"Learning rate decayed to {exp['train']['decay_lr']} at iteration {current_iter}")
-            
-            if current_iter >= max_iterations:
-                break
+            current_iter += 1
+        
+        if current_iter >= args.max_iters:
+            break
     
-    # Final checkpoint save
-    save_checkpoint(exp)
-    print(f"Training completed after {current_iter} iterations")
+    # Save final model
+    exp_path = os.path.join('exp', args.exp)
+    final_path = os.path.join(exp_path, 'final_model.pt')
+    torch.save({
+        'iteration': current_iter,
+        'state_dict': exp['inference']['net'].state_dict(),
+        'optimizer': exp['train']['optimizer'].state_dict(),
+    }, final_path)
+    print(f"Final model saved: {final_path}")
+    
+    print("Training completed!")
 
 if __name__ == '__main__':
     main()
