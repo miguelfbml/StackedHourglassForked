@@ -198,20 +198,26 @@ def main():
         print(f"❌ Error loading data: {e}")
         return
     
-    # Load model (directly from models directory)
+    # Load model (using the network from task config)
     print("\n🏗️ Loading model...")
     try:
-        from models.StackedHourglass import StackedHourglass
+        from utils.misc import importNet
         
-        # Use exact config parameters (no defaults)
-        num_stacks = config['num_stacks']
-        num_blocks = config['num_blocks']
-        num_classes = config['num_classes']
+        # Get network from config
+        PoseNet = importNet(config['network'])
+        inference_config = config['inference']
         
-        model = StackedHourglass(num_stacks=num_stacks, num_blocks=num_blocks, num_classes=num_classes)
+        # Create model with config parameters
+        model = PoseNet(
+            nstack=inference_config['nstack'], 
+            inp_dim=inference_config['inp_dim'], 
+            oup_dim=inference_config['oup_dim']
+        )
         model = model.to(device)
         print(f"✅ Model loaded: {model.__class__.__name__}")
-        print(f"   Stacks: {num_stacks}, Blocks: {num_blocks}, Classes: {num_classes}")
+        print(f"   Stacks: {inference_config['nstack']}")
+        print(f"   Input dim: {inference_config['inp_dim']}")
+        print(f"   Output dim: {inference_config['oup_dim']}")
         
         # Count parameters
         total_params = sum(p.numel() for p in model.parameters())
