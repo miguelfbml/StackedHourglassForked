@@ -4,7 +4,6 @@ import numpy as np
 import cv2
 from imageio import imread
 import os
-import ref
 
 class GenerateHeatmap():
     def __init__(self, output_res, num_parts):
