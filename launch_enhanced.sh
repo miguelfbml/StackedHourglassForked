@@ -9,4 +9,4 @@
 echo "Running MPI-INF-3DHP training job in reserved partition"
 
 # Commands / scripts to run
-python3 train_mpi_inf_3dhp_enhanced.py --exp mpi_inf_3dhp_training --max_epochs 50
+python3 train.py --exp mpi_inf_3dhp_training --max_epochs 50
