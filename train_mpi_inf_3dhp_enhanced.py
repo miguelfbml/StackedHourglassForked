@@ -198,26 +198,14 @@ def main():
         print(f"❌ Error loading data: {e}")
         return
     
-    # Load model (using the network from task config)
+    # Load model (using the task's make_network function)
     print("\n🏗️ Loading model...")
     try:
-        from utils.misc import importNet
-        
-        # Get network from config
-        PoseNet = importNet(config['network'])
-        inference_config = config['inference']
-        
-        # Create model with config parameters
-        model = PoseNet(
-            nstack=inference_config['nstack'], 
-            inp_dim=inference_config['inp_dim'], 
-            oup_dim=inference_config['oup_dim']
-        )
+        # Use the task's make_network function to create the model properly
+        config = task_module.make_network(config)
+        model = config['inference']['net'].module.model  # Extract the actual model from DataParallel wrapper
         model = model.to(device)
         print(f"✅ Model loaded: {model.__class__.__name__}")
-        print(f"   Stacks: {inference_config['nstack']}")
-        print(f"   Input dim: {inference_config['inp_dim']}")
-        print(f"   Output dim: {inference_config['oup_dim']}")
         
         # Count parameters
         total_params = sum(p.numel() for p in model.parameters())
