@@ -178,7 +178,7 @@ def main():
     exp_dir = os.path.join('exp', args.exp)
     os.makedirs(exp_dir, exist_ok=True)
     
-    # Import task configuration (following train.py pattern)
+    # Import task configuration
     try:
         import task.pose_mpi_inf_3dhp_with_images as task_module
         config = task_module.__config__
@@ -187,10 +187,11 @@ def main():
         print(f"❌ Error loading task: {e}")
         return
     
-    # Load data
+    # Load data (directly from data provider)
     print("\n📊 Loading datasets...")
     try:
-        train_loader, val_loader, test_loader = task_module.init(config)
+        from data.MPI_INF_3DHP.dp_with_images import init
+        train_loader, val_loader, test_loader = init(config)
         print(f"✅ Train samples: {len(train_loader.dataset)}")
         print(f"✅ Val/Test samples: {len(val_loader.dataset)}")
     except Exception as e:
@@ -213,7 +214,7 @@ def main():
         print(f"❌ Error loading model: {e}")
         return
     
-    # Set up optimizer and loss (following train.py pattern)
+    # Set up optimizer and loss
     optimizer = torch.optim.RMSprop(model.parameters(), lr=args.lr)
     criterion = nn.MSELoss()
     
