@@ -1,114 +1,97 @@
 #!/usr/bin/env python3
 """
-Quick test script to debug MPI-INF-3DHP data loading issues
+Quick test script for MPI-INF-3DHP data loading
 """
 
-import os
 import sys
-import traceback
+import os
+import numpy as np
 
-# Add project root to path
-sys.path.insert(0, os.path.abspath('.'))
+# Add the project root to Python path
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-def test_quick():
-    """Quick test of data loading"""
-    print("=== Quick MPI-INF-3DHP Data Loading Test ===")
+def test_data_structure():
+    """Test the actual data structure"""
+    print("=== Quick MPI-INF-3DHP Data Structure Test ===")
     
-    # Check if data files exist
-    data_root = 'data/motion3d'  # Changed from 'data/MPI_INF_3DHP/motion3d'
-    train_file = os.path.join(data_root, "data_train_3dhp.npz")
-    test_file = os.path.join(data_root, "data_test_3dhp.npz")
+    # Check train data structure
+    train_file = 'data/motion3d/data_train_3dhp.npz'
+    test_file = 'data/motion3d/data_test_3dhp.npz'
     
-    print(f"Checking data files:")
-    print(f"  Train file: {train_file} - {'✓' if os.path.exists(train_file) else '✗'}")
-    print(f"  Test file: {test_file} - {'✓' if os.path.exists(test_file) else '✗'}")
-    
-    if not os.path.exists(train_file) or not os.path.exists(test_file):
-        print("ERROR: Required data files are missing!")
-        return False
-    
-    # Test importing modules
-    try:
-        print("\nTesting module imports...")
-        import importlib
-        
-        print("  - Importing task module...")
-        task = importlib.import_module('task.pose_mpi_inf_3dhp_with_images')
-        print("  ✓ Task module imported")
-        
-        print("  - Importing data provider...")
-        data_func = importlib.import_module('data.MPI_INF_3DHP.dp_with_images')
-        print("  ✓ Data provider imported")
-        
-    except Exception as e:
-        print(f"  ✗ Import error: {e}")
-        traceback.print_exc()
-        return False
-    
-    # Test creating a minimal dataset
-    try:
-        print("\nTesting dataset creation...")
-        
-        # Create minimal config
-        config = {
-            'train': {
-                'input_res': 256,
-                'output_res': 64,
-                'batchsize': 1
-            },
-            'inference': {
-                'num_parts': 17
-            }
-        }
-        
-        print("  - Creating training dataset...")
-        train_dataset = data_func.Dataset(
-            config, 
-            train=True, 
-            data_root=data_root,
-            mpi_dataset_root='/nas-ctm01/datasets/public/mpi_inf_3dhp'
-        )
-        print(f"  ✓ Training dataset created with {len(train_dataset)} samples")
-        
-        print("  - Creating validation dataset...")
-        val_dataset = data_func.Dataset(
-            config, 
-            train=False, 
-            data_root=data_root,
-            mpi_dataset_root='/nas-ctm01/datasets/public/mpi_inf_3dhp'
-        )
-        print(f"  ✓ Validation dataset created with {len(val_dataset)} samples")
-        
-    except Exception as e:
-        print(f"  ✗ Dataset creation error: {e}")
-        traceback.print_exc()
-        return False
-    
-    # Test loading a sample
-    try:
-        print("\nTesting sample loading...")
-        if len(train_dataset) > 0:
-            print("  - Loading first training sample...")
-            sample = train_dataset[0]
-            print(f"  ✓ Sample loaded successfully")
+    for split_name, data_file in [('Train', train_file), ('Test', test_file)]:
+        if not os.path.exists(data_file):
+            print(f"❌ {data_file} not found")
+            continue
             
-            if isinstance(sample, dict):
-                print(f"    - Images shape: {sample['imgs'].shape}")
-                print(f"    - Heatmaps shape: {sample['heatmaps'].shape}")
-            else:
-                print(f"    - Unexpected format: {type(sample)}")
+        print(f"\n📊 {split_name} Data Structure:")
+        npz_data = np.load(data_file, allow_pickle=True)
+        raw_data = npz_data['data'].item()
+        
+        sample_count = 0
+        
+        if split_name == 'Train':
+            # Training data: {'S1 Seq1': [...], ...}
+            for subject_seq, seq_data in raw_data.items():
+                print(f"  {subject_seq}: {len(seq_data)} camera setups")
+                for camera_dict in seq_data:
+                    for camera_str, camera_data in camera_dict.items():
+                        if 'data_2d' in camera_data:
+                            frames = len(camera_data['data_2d'])
+                            sample_count += frames // 5  # Every 5th frame
+                            print(f"    Camera {camera_str}: {frames} frames -> {frames // 5} samples")
         else:
-            print("  ✗ No samples in training dataset")
-            return False
-            
-    except Exception as e:
-        print(f"  ✗ Sample loading error: {e}")
-        traceback.print_exc()
-        return False
+            # Test data: {'TS1': {...}, ...}
+            for subject, subject_data in raw_data.items():
+                if 'data_2d' in subject_data:
+                    frames = len(subject_data['data_2d'])
+                    sample_count += frames // 10  # Every 10th frame
+                    print(f"  {subject}: {frames} frames -> {frames // 10} samples")
+        
+        print(f"  Total samples: {sample_count}")
+
+def test_data_loading():
+    """Test the data provider"""
+    print("\n=== Testing Data Provider ===")
     
-    print("\n✓ All tests passed! Data loading appears to be working.")
-    return True
+    try:
+        # Import the config
+        import task.pose_mpi_inf_3dhp_with_images as task_module
+        
+        # Create config
+        config = task_module.__config__
+        
+        # Import data provider
+        from data.MPI_INF_3DHP.dp_with_images import Dataset
+        
+        print("✓ Creating train dataset...")
+        train_dataset = Dataset(config, train=True)
+        
+        print("✓ Creating test dataset...")
+        test_dataset = Dataset(config, train=False)
+        
+        print(f"✓ Train dataset: {len(train_dataset)} samples")
+        print(f"✓ Test dataset: {len(test_dataset)} samples")
+        
+        # Test loading first sample
+        print("\n📝 Testing sample loading...")
+        sample = train_dataset[0]
+        
+        print(f"✓ Sample loaded successfully:")
+        print(f"  - Images shape: {sample['imgs'].shape}")
+        print(f"  - Heatmaps shape: {sample['heatmaps'].shape}")
+        print(f"  - Subject: {sample['subject']}")
+        print(f"  - Sequence: {sample['sequence']}")
+        print(f"  - Frame: {sample['frame_idx']}")
+        print(f"  - Camera: {sample['camera']}")
+        print(f"  - Image path: {sample['imgname']}")
+        
+        print("\n✓ All tests passed! Data loading appears to be working.")
+        
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        import traceback
+        traceback.print_exc()
 
 if __name__ == '__main__':
-    success = test_quick()
-    sys.exit(0 if success else 1)
+    test_data_structure()
+    test_data_loading()
