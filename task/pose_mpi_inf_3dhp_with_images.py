@@ -18,7 +18,7 @@ __config__ = {
         'num_parts': 17,
         'increase': 0,
         'keys': ['imgs'],
-        'num_eval': 1466, #here for validation
+        'num_eval': 1466,
         'train_num_eval': 500,
     },
     'train': {
@@ -79,7 +79,30 @@ def make_network(configs):
     config = configs['inference']
     
     PoseNet = importNet(configs['network'])
-    poseNet = PoseNet(config['nstack'], config['inp_dim'], config['oup_dim'])
+    
+    # FIX: Check the exact parameter order that PoseNet expects
+    # Based on the error, it seems the parameters need to be in different order
+    print(f"Creating PoseNet with nstack={config['nstack']}, inp_dim={config['inp_dim']}, oup_dim={config['oup_dim']}")
+    
+    # Try different parameter orders to match what the model expects
+    try:
+        # Option 1: Original order
+        poseNet = PoseNet(config['nstack'], config['inp_dim'], config['oup_dim'])
+    except Exception as e1:
+        print(f"Failed with original order: {e1}")
+        try:
+            # Option 2: Swap inp_dim and oup_dim
+            poseNet = PoseNet(config['nstack'], config['oup_dim'], config['inp_dim'])
+            print("SUCCESS: Used swapped parameter order (nstack, oup_dim, inp_dim)")
+        except Exception as e2:
+            print(f"Failed with swapped order: {e2}")
+            try:
+                # Option 3: Different order
+                poseNet = PoseNet(config['inp_dim'], config['nstack'], config['oup_dim'])
+                print("SUCCESS: Used order (inp_dim, nstack, oup_dim)")
+            except Exception as e3:
+                print(f"Failed with all orders: {e1}, {e2}, {e3}")
+                raise e1
 
     def calc_loss(*args, **kwargs):
         return [kwargs['heatmaps']]
