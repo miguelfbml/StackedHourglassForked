@@ -63,46 +63,74 @@ class Dataset(torch.utils.data.Dataset):
         npz_data = np.load(data_file, allow_pickle=True)
         raw_data = npz_data['data'].item()
         
+        print(f"Raw data keys: {list(raw_data.keys())}")
+        
         samples = []
         
         if train:
             # Training data: {'S1 Seq1': [...], 'S2 Seq1': [...], ...}
             for subject_seq, seq_data in raw_data.items():
+                print(f"Processing {subject_seq}, type: {type(seq_data)}")
                 parts = subject_seq.split(' ')
                 subject = parts[0]  # 'S1'
                 sequence = parts[1]  # 'Seq1'
                 
-                for camera_dict in seq_data:
-                    for camera_str, camera_data in camera_dict.items():
-                        camera_idx = int(camera_str)
+                # seq_data is a list, let's check its structure
+                if isinstance(seq_data, list):
+                    for seq_idx, seq_item in enumerate(seq_data):
+                        print(f"  Seq item {seq_idx}, type: {type(seq_item)}")
                         
-                        if 'data_2d' in camera_data and 'data_3d' in camera_data:
-                            data_2d = camera_data['data_2d']
-                            data_3d = camera_data['data_3d']
-                            
-                            # Sample every 10th frame to reduce dataset size
-                            for frame_idx in range(0, len(data_2d), 10):
-                                # Find corresponding image
-                                img_path = self.find_image_path(subject, sequence, frame_idx + 1, camera_idx, train=True)
-                                if img_path and os.path.exists(img_path):
-                                    samples.append({
-                                        'img_path': img_path,
-                                        'joint_2d': data_2d[frame_idx],
-                                        'joint_3d': data_3d[frame_idx],
-                                        'subject': subject,
-                                        'sequence': sequence,
-                                        'frame_idx': frame_idx + 1,
-                                        'camera': camera_idx
-                                    })
+                        if isinstance(seq_item, dict):
+                            # Check if this dict has camera keys like '0', '1', etc.
+                            for key, value in seq_item.items():
+                                print(f"    Key: {key}, type: {type(value)}")
+                                
+                                if isinstance(key, str) and key.isdigit():
+                                    # This is a camera index
+                                    camera_idx = int(key)
+                                    camera_data = value
+                                    
+                                    if isinstance(camera_data, dict) and 'data_2d' in camera_data and 'data_3d' in camera_data:
+                                        data_2d = camera_data['data_2d']
+                                        data_3d = camera_data['data_3d']
+                                        
+                                        print(f"      Found camera {camera_idx}: {len(data_2d)} frames")
+                                        
+                                        # Sample every 50th frame to reduce dataset size for testing
+                                        for frame_idx in range(0, len(data_2d), 50):
+                                            # Find corresponding image
+                                            img_path = self.find_image_path(subject, sequence, frame_idx + 1, camera_idx, train=True)
+                                            if img_path and os.path.exists(img_path):
+                                                samples.append({
+                                                    'img_path': img_path,
+                                                    'joint_2d': data_2d[frame_idx],
+                                                    'joint_3d': data_3d[frame_idx],
+                                                    'subject': subject,
+                                                    'sequence': sequence,
+                                                    'frame_idx': frame_idx + 1,
+                                                    'camera': camera_idx
+                                                })
+                                            else:
+                                                # Debug: print first few failed paths
+                                                if len(samples) < 10:
+                                                    print(f"      Image not found: {img_path}")
+                
+                # Stop after processing first few subjects for debugging
+                if len(samples) > 100:
+                    break
         else:
             # Test data: {'TS1': {...}, 'TS2': {...}, ...}
             for subject, subject_data in raw_data.items():
-                if 'data_2d' in subject_data and 'data_3d' in subject_data:
+                print(f"Processing {subject}, type: {type(subject_data)}")
+                
+                if isinstance(subject_data, dict) and 'data_2d' in subject_data and 'data_3d' in subject_data:
                     data_2d = subject_data['data_2d']
                     data_3d = subject_data['data_3d']
                     
-                    # Sample every 20th frame for test
-                    for frame_idx in range(0, len(data_2d), 20):
+                    print(f"  Found {len(data_2d)} frames for {subject}")
+                    
+                    # Sample every 50th frame for test
+                    for frame_idx in range(0, len(data_2d), 50):
                         img_path = self.find_image_path(subject, None, frame_idx + 1, 0, train=False)
                         if img_path and os.path.exists(img_path):
                             samples.append({
@@ -114,7 +142,12 @@ class Dataset(torch.utils.data.Dataset):
                                 'frame_idx': frame_idx + 1,
                                 'camera': 0
                             })
+                        else:
+                            # Debug: print first few failed paths
+                            if len(samples) < 10:
+                                print(f"  Image not found: {img_path}")
         
+        print(f"Total samples found: {len(samples)}")
         return samples
 
     def find_image_path(self, subject, sequence, frame_idx, camera_idx, train=True):
