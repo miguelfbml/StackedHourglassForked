@@ -18,7 +18,7 @@ __config__ = {
         'num_parts': 17,
         'increase': 0,
         'keys': ['imgs'],
-        'num_eval': 1000,
+        'num_eval': 1466, #here for validation
         'train_num_eval': 500,
     },
     'train': {

@@ -198,12 +198,20 @@ def main():
         print(f"❌ Error loading data: {e}")
         return
     
-    # Load model
+    # Load model (directly from models directory)
     print("\n🏗️ Loading model...")
     try:
-        model = task_module.model
+        from models.StackedHourglass import StackedHourglass
+        
+        # Use exact config parameters (no defaults)
+        num_stacks = config['num_stacks']
+        num_blocks = config['num_blocks']
+        num_classes = config['num_classes']
+        
+        model = StackedHourglass(num_stacks=num_stacks, num_blocks=num_blocks, num_classes=num_classes)
         model = model.to(device)
         print(f"✅ Model loaded: {model.__class__.__name__}")
+        print(f"   Stacks: {num_stacks}, Blocks: {num_blocks}, Classes: {num_classes}")
         
         # Count parameters
         total_params = sum(p.numel() for p in model.parameters())
